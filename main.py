@@ -259,7 +259,7 @@ def get_opportunities(limit: int = 20):
         logger.error(f"Error in get_opportunities: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/opportunities/simple")
+app.get("/opportunities/simple", response_class=PlainTextResponse)
 def get_opportunities_simple(limit: int = 20):
     """قائمة بسيطة نصية للتطبيق"""
     
@@ -316,18 +316,16 @@ def get_opportunities_simple(limit: int = 20):
         # استخراج النصوص فقط
         stocks_text = [item['text'] for item in simple_list[:limit]]
         
-        result = {
-            "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(),
-            "total_analyzed": len(simple_list),
-            "stocks": stocks_text
-        }
+        # إرجاع نص مباشر
+        result = "\n".join(stocks_text)
         
         set_cache(cache_key, result)
         return result
         
     except Exception as e:
         logger.error(f"Error in get_opportunities_simple: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return f"Error: {str(e)}"
+
 
 @app.get("/stock/{symbol}")
 def get_stock_analysis(symbol: str):
@@ -410,3 +408,4 @@ def scheduler_status():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
