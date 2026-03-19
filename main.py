@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -260,7 +260,7 @@ def get_opportunities(limit: int = 20):
         logger.error(f"Error in get_opportunities: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-app.get("/opportunities/simple", response_class=PlainTextResponse)
+@app.get("/opportunities/simple", response_class=PlainTextResponse)
 def get_opportunities_simple(limit: int = 20):
     """قائمة بسيطة نصية للتطبيق"""
     
@@ -326,7 +326,6 @@ def get_opportunities_simple(limit: int = 20):
     except Exception as e:
         logger.error(f"Error in get_opportunities_simple: {e}")
         return f"Error: {str(e)}"
-
 
 @app.get("/stock/{symbol}")
 def get_stock_analysis(symbol: str):
@@ -409,5 +408,3 @@ def scheduler_status():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
