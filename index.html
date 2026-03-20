@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptiMax - تحليل الأسهم الشرعية</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .status-bar {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .market-open {
+            background: #10b981;
+            color: white;
+        }
+
+        .market-closed {
+            background: #ef4444;
+            color: white;
+        }
+
+        .loading {
+            background: white;
+            border-radius: 15px;
+            padding: 60px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .loading-spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stock-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-left: 5px solid #667eea;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .stock-symbol {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stock-price {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stock-name {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .stock-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .info-label {
+            font-size: 0.75em;
+            color: #999;
+            margin-bottom: 3px;
+        }
+
+        .info-value {
+            font-size: 0.95em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .signal-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 0.9em;
+            text-align: center;
+        }
+
+        .strong-buy {
+            background: #10b981;
+            color: white;
+        }
+
+        .buy {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .hold {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .sell {
+            background: #ef4444;
+            color: white;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 50px auto;
+            padding: 0;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 20px 20px 0 0;
+            position: relative;
+        }
+
+        .close {
+            color: white;
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            font-size: 35px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.3s;
+        }
+
+        .close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .detail-section {
+            margin-bottom: 25px;
+            padding-bottom: 25px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .detail-section:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .detail-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .detail-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .detail-value {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .analysis-text {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            line-height: 1.8;
+            color: #333;
+        }
+
+        .refresh-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 10px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .positive {
+            color: #10b981;
+        }
+
+        .negative {
+            color: #ef4444;
+        }
+
+        @media (max-width: 768px) {
+            .stock-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .status-bar {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 OptiMax</h1>
+            <p>تحليل احترافي للأسهم الشرعية مدعوم بالذكاء الاصطناعي</p>
+        </div>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span id="marketStatus" class="status-badge">جاري التحميل...</span>
+                <span id="updateTime"></span>
+            </div>
+            <button class="refresh-btn" onclick="loadData()">🔄 تحديث</button>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <h2>جاري تحليل الأسهم...</h2>
+            <p>قد يستغرق هذا 1-2 دقيقة</p>
+        </div>
+
+        <div id="error" style="display: none;" class="error"></div>
+
+        <div id="stockGrid" class="stock-grid" style="display: none;"></div>
+    </div>
+
+    <!-- Modal -->
+    <div id="detailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeModal()">&times;</span>
+                <h2 id="modalTitle" style="margin-top: 10px;"></h2>
+                <p id="modalSubtitle" style="margin-top: 5px; opacity: 0.9;"></p>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>جاري تحليل السهم...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://optimax-backend.onrender.com';
+
+        async function loadData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const grid = document.getElementById('stockGrid');
+
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            grid.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_URL}/top-opportunities`);
+                if (!response.ok) throw new Error('فشل في جلب البيانات');
+                
+                const data = await response.json();
+                
+                // Update status
+                const marketStatus = document.getElementById('marketStatus');
+                marketStatus.className = `status-badge ${data.market_open ? 'market-open' : 'market-closed'}`;
+                marketStatus.textContent = data.market_open ? '🟢 السوق مفتوح' : '🔴 السوق مغلق';
+                
+                document.getElementById('updateTime').textContent = `آخر تحديث: ${new Date(data.updated_at).toLocaleString('ar-SA')}`;
+
+                // Render stocks
+                grid.innerHTML = data.top_opportunities.map(stock => `
+                    <div class="stock-card" onclick="showDetails('${stock.symbol}')">
+                        <div class="stock-header">
+                            <div class="stock-symbol">${stock.symbol}</div>
+                            <div class="stock-price">$${stock.price}</div>
+                        </div>
+                        <div class="stock-name">${stock.name}</div>
+                        <div class="stock-info">
+                            <div class="info-item">
+                                <span class="info-label">التغير %</span>
+                                <span class="info-value ${stock.change_pct >= 0 ? 'positive' : 'negative'}">
+                                    ${stock.change_pct >= 0 ? '+' : ''}${stock.change_pct}%
+                                </span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">النقاط</span>
+                                <span class="info-value">${stock.score}/10</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">RSI</span>
+                                <span class="info-value">${stock.rsi}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">MACD</span>
+                                <span class="info-value">${stock.macd}</span>
+                            </div>
+                        </div>
+                        <div style="text-align: center;">
+                            <span class="signal-badge ${getSignalClass(stock.signal)}">
+                                ${getSignalArabic(stock.signal)}
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+
+                loading.style.display = 'none';
+                grid.style.display = 'grid';
+
+            } catch (err) {
+                loading.style.display = 'none';
+                error.style.display = 'block';
+                error.textContent = 'حدث خطأ في تحميل البيانات. يرجى المحاولة مرة أخرى.';
+                console.error(err);
+            }
+        }
+
+        async function showDetails(symbol) {
+            const modal = document.getElementById('detailModal');
+            const modalBody = document.getElementById('modalBody');
+            
+            modal.style.display = 'block';
+            modalBody.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>جاري تحليل السهم بواسطة Claude AI...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`${API_URL}/analysis/${symbol}`);
+                if (!response.ok) throw new Error('فشل في جلب التحليل');
+                
+                const data = await response.json();
+                
+                document.getElementById('modalTitle').textContent = `${data.symbol} - ${data.name}`;
+                document.getElementById('modalSubtitle').textContent = `السعر: $${data.price} | التغير: ${data.change_pct >= 0 ? '+' : ''}${data.change_pct}%`;
+
+                let analysisHTML = '';
+                
+                if (data.claude_analysis) {
+                    const ca = data.claude_analysis;
+                    analysisHTML = `
+                        <div class="detail-section">
+                            <div class="section-title">🎯 التوصية والأهداف</div>
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <div class="detail-label">نقطة الدخول</div>
+                                    <div class="detail-value positive">$${ca.entry_point}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">الهدف القصير (1-3 أيام)</div>
+                                    <div class="detail-value positive">$${ca.target_short}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">الهدف المتوسط (أسبوع-أسبوعين)</div>
+                                    <div class="detail-value positive">$${ca.target_medium}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">وقف الخسارة</div>
+                                    <div class="detail-value negative">$${ca.stop_loss}</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">نسبة النجاح</div>
+                                    <div class="detail-value">${ca.success_rate}%</div>
+                                </div>
+                                <div class="detail-item">
+                                    <div class="detail-label">صالح حتى</div>
+                                    <div class="detail-value">${ca.valid_until}</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <div class="section-title">🤖 تحليل Claude AI</div>
+                            <div class="analysis-text">${ca.analysis}</div>
+                        </div>
+                    `;
+                }
+
+                analysisHTML += `
+                    <div class="detail-section">
+                        <div class="section-title">📊 المؤشرات الفنية</div>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">RSI</div>
+                                <div class="detail-value">${data.indicators.rsi}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">MACD</div>
+                                <div class="detail-value">${data.indicators.macd}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">SMA 20</div>
+                                <div class="detail-value">$${data.indicators.sma_20}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">SMA 50</div>
+                                <div class="detail-value">$${data.indicators.sma_50}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Bollinger Upper</div>
+                                <div class="detail-value">$${data.indicators.bb_upper}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Bollinger Lower</div>
+                                <div class="detail-value">$${data.indicators.bb_lower}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <div class="section-title">📈 ملخص</div>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <div class="detail-label">النقاط</div>
+                                <div class="detail-value">${data.score}/10</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">الإشارة</div>
+                                <div class="detail-value">
+                                    <span class="signal-badge ${getSignalClass(data.signal)}">
+                                        ${getSignalArabic(data.signal)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                modalBody.innerHTML = analysisHTML;
+
+            } catch (err) {
+                modalBody.innerHTML = `
+                    <div class="error">
+                        فشل في تحميل التحليل المفصل. يرجى المحاولة مرة أخرى.
+                    </div>
+                `;
+                console.error(err);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
+        }
+
+        function getSignalClass(signal) {
+            const map = {
+                'Strong Buy': 'strong-buy',
+                'Buy': 'buy',
+                'Hold': 'hold',
+                'Sell': 'sell',
+                'Strong Sell': 'sell'
+            };
+            return map[signal] || 'hold';
+        }
+
+        function getSignalArabic(signal) {
+            const map = {
+                'Strong Buy': 'شراء قوي',
+                'Buy': 'شراء',
+                'Hold': 'احتفاظ',
+                'Sell': 'بيع',
+                'Strong Sell': 'بيع قوي'
+            };
+            return map[signal] || signal;
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('detailModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+
+        // Load data on page load
+        loadData();
+
+        // Auto refresh every 10 minutes
+        setInterval(loadData, 600000);
+    </script>
+</body>
+</html>
