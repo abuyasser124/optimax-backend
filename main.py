@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -11,12 +11,13 @@ import anthropic
 import os
 from functools import lru_cache
 import logging
+import json
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OptiMax API", version="1.0.0")
+app = FastAPI(title="OptiMax API", version="2.0.0")
 
 # CORS
 app.add_middleware(
@@ -27,7 +28,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# قائمة الأسهم الشرعية (396 سهم)
+# Claude API
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
+# قائمة الأسهم الشرعية (400 سهم)
 SHARIAH_STOCKS = [
     ("AAPL", "Apple Inc"), ("MSFT", "Microsoft Corporation"), ("GOOGL", "Alphabet Inc Class A"),
     ("GOOG", "Alphabet Inc Class C"), ("NVDA", "NVIDIA Corporation"), ("META", "Meta Platforms Inc"),
@@ -77,12 +82,14 @@ SHARIAH_STOCKS = [
     ("HPE", "Hewlett Packard Enterprise"), ("AI", "C3.ai Inc"), ("PATH", "UiPath Inc"),
     ("TTD", "The Trade Desk Inc"), ("Z", "Zillow Group Inc"), ("CMCSA", "Comcast Corporation"),
     ("T", "AT&T Inc"), ("VZ", "Verizon Communications Inc"), ("TMUS", "T-Mobile US Inc"),
+    ("PEP", "PepsiCo Inc"), ("KO", "Coca-Cola Company"), ("MDLZ", "Mondelez International"),
+    ("GIS", "General Mills Inc"), ("K", "Kellogg Company"), ("CPB", "Campbell Soup Company"),
 ]
 
 # Cache
 _cache = {}
 _cache_time = {}
-CACHE_DURATION = 300 # 5 minutes
+CACHE_DURATION = 600  # 10 minutes
 
 def get_cache(key):
     if key in _cache:
@@ -94,20 +101,34 @@ def set_cache(key, value):
     _cache[key] = value
     _cache_time[key] = datetime.now().timestamp()
 
+def is_market_open():
+    """فحص إذا السوق مفتوح"""
+    et = pytz.timezone('US/Eastern')
+    now_et = datetime.now(et)
+    
+    # تحقق من يوم الأسبوع (الاثنين=0، الأحد=6)
+    if now_et.weekday() >= 5:  # السبت أو الأحد
+        return False
+    
+    # تحقق من ساعات التداول
+    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
+    
+    return market_open <= now_et <= market_close
+
 @app.get("/")
 def root():
     return {
         "app": "OptiMax API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "endpoints": {
-            "opportunities": "/opportunities",
-            "opportunities_simple": "/opportunities/simple",
-            "stock_analysis": "/stock/{symbol}",
-            "scheduler_status": "/scheduler/status",
-            "documentation": "/docs"
+            "top_opportunities": "/top-opportunities",
+            "stock_analysis": "/analysis/{symbol}",
+            "market_status": "/market-status"
         },
         "total_stocks": len(SHARIAH_STOCKS),
-        "message": "Shariah-compliant stock analysis for halal investing"
+        "market_open": is_market_open(),
+        "message": "Advanced Shariah-compliant stock analysis powered by Claude AI"
     }
 
 def calculate_indicators(df):
@@ -145,98 +166,100 @@ def calculate_indicators(df):
         return df
 
 def calculate_score(row, current_price):
-    """حساب نقاط السهم"""
-    score = 0
+    """حساب نقاط السهم من 0-10"""
+    score = 0.0
     
     try:
-        # RSI - Oversold
+        # RSI - Oversold (0-3 points)
         if row['RSI'] < 30:
-            score += 3
+            score += 3.0
         elif row['RSI'] < 40:
             score += 1.5
+        elif row['RSI'] < 50:
+            score += 0.5
             
-        # MACD Bullish
+        # MACD Bullish (0-3 points)
         if row['MACD'] > row['MACD_Signal']:
             if row['MACD_Hist'] > 0:
-                score += 3
+                score += 3.0
             else:
                 score += 1.5
                 
-        # Near Bollinger Lower
+        # Near Bollinger Lower (0-2 points)
         if current_price < row['BB_lower'] * 1.02:
-            score += 2
+            score += 2.0
+        elif current_price < row['BB_lower'] * 1.05:
+            score += 1.0
             
-        # Price above SMA-20
+        # Price above SMA-20 (0-1 point)
         if current_price > row['SMA_20']:
-            score += 1
+            score += 1.0
             
-        # Volume surge
+        # Volume surge (0-1 point)
         if row['Volume'] > row['Volume_SMA'] * 5:
-            score += 1
+            score += 1.0
+        elif row['Volume'] > row['Volume_SMA'] * 3:
+            score += 0.5
             
     except:
         pass
         
-    return score
+    return min(score, 10.0)  # Cap at 10
 
 def get_signal(score):
     """تحديد الإشارة"""
-    if score >= 6:
+    if score >= 8:
         return "Strong Buy"
-    elif score >= 4:
+    elif score >= 6:
         return "Buy"
-    elif score >= 2:
+    elif score >= 4:
         return "Hold"
-    elif score >= 0:
+    elif score >= 2:
         return "Sell"
     else:
         return "Strong Sell"
 
-@app.get("/opportunities")
-def get_opportunities(limit: int = 20):
-    """الحصول على أفضل الفرص"""
+@app.get("/top-opportunities")
+def get_top_opportunities():
+    """الحصول على أفضل 20 فرصة بعد تحليل Claude AI"""
     
-    cache_key = f"opportunities_{limit}"
+    cache_key = "top_opportunities"
     cached = get_cache(cache_key)
     if cached:
         return cached
     
-    logger.info(f"Analyzing {len(SHARIAH_STOCKS)} stocks...")
+    logger.info(f"Starting analysis of {len(SHARIAH_STOCKS)} stocks...")
     
-    opportunities = []
-    symbols = [s[0] for s in SHARIAH_STOCKS[:100]]
+    # المرحلة 1: التحليل الفني لكل الأسهم
+    all_scores = []
+    symbols = [s[0] for s in SHARIAH_STOCKS]
     
     try:
         data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
         
-        for symbol, name in SHARIAH_STOCKS[:100]:
+        for symbol, name in SHARIAH_STOCKS:
             try:
                 if len(symbols) > 1:
                     stock_data = data[symbol].copy()
                 else:
                     stock_data = data.copy()
                 
-                if stock_data.empty:
-                    continue
-                
-                stock_data = calculate_indicators(stock_data)
-                
                 if stock_data.empty or len(stock_data) < 50:
                     continue
                 
+                stock_data = calculate_indicators(stock_data)
                 latest = stock_data.iloc[-1]
                 current_price = latest['Close']
                 
                 score = calculate_score(latest, current_price)
-                signal = get_signal(score)
                 
-                opportunities.append({
+                all_scores.append({
                     "symbol": symbol,
                     "name": name,
                     "price": round(float(current_price), 2),
                     "change_pct": round(((current_price - stock_data.iloc[-2]['Close']) / stock_data.iloc[-2]['Close']) * 100, 2),
                     "score": round(score, 1),
-                    "signal": signal,
+                    "signal": get_signal(score),
                     "rsi": round(float(latest['RSI']), 1) if not pd.isna(latest['RSI']) else None,
                     "macd": round(float(latest['MACD']), 2) if not pd.isna(latest['MACD']) else None,
                 })
@@ -245,95 +268,83 @@ def get_opportunities(limit: int = 20):
                 logger.error(f"Error analyzing {symbol}: {e}")
                 continue
         
-        opportunities.sort(key=lambda x: x['score'], reverse=True)
+        # ترتيب وأخذ أفضل 50
+        all_scores.sort(key=lambda x: x['score'], reverse=True)
+        top_50 = all_scores[:50]
+        
+        logger.info(f"Top 50 stocks selected. Sending to Claude AI for final analysis...")
+        
+        # المرحلة 2: تحليل Claude للـ 50 الأفضل
+        final_top_20 = []
+        
+        if claude_client:
+            try:
+                # إعداد البيانات لـ Claude
+                stocks_summary = "\n".join([
+                    f"{i+1}. {s['symbol']} ({s['name']}) - Score: {s['score']}/10, Price: ${s['price']}, RSI: {s['rsi']}, Signal: {s['signal']}"
+                    for i, s in enumerate(top_50)
+                ])
+                
+                prompt = f"""أنت محلل أسهم خبير متخصص في الأسهم الشرعية الأمريكية.
+
+لديك قائمة بأفضل 50 سهم شرعي بناءً على التحليل الفني:
+
+{stocks_summary}
+
+مهمتك:
+1. اختر أفضل 20 سهم من القائمة للتداول القصير والمتوسط المدى
+2. رتبهم حسب قوة الفرصة (الأقوى أولاً)
+3. أرجع فقط رموز الأسهم (Symbols) مفصولة بفاصلة
+
+مثال للرد: AAPL,NVDA,MSFT,TSLA,...
+
+الرد (فقط رموز الأسهم):"""
+
+                message = claude_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=500,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                
+                selected_symbols = message.content[0].text.strip().split(',')
+                selected_symbols = [s.strip() for s in selected_symbols][:20]
+                
+                # ترتيب حسب اختيار Claude
+                for symbol in selected_symbols:
+                    stock = next((s for s in top_50 if s['symbol'] == symbol), None)
+                    if stock:
+                        final_top_20.append(stock)
+                
+                logger.info(f"Claude AI selected {len(final_top_20)} stocks")
+                
+            except Exception as e:
+                logger.error(f"Claude AI error: {e}")
+                final_top_20 = top_50[:20]
+        else:
+            logger.warning("Claude API not configured, using top 20 from technical analysis")
+            final_top_20 = top_50[:20]
         
         result = {
             "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(),
-            "total_analyzed": len(opportunities),
-            "opportunities": opportunities[:limit]
+            "market_open": is_market_open(),
+            "total_analyzed": len(all_scores),
+            "top_opportunities": final_top_20,
+            "analysis_method": "Claude AI" if claude_client and final_top_20 else "Technical Only"
         }
         
         set_cache(cache_key, result)
         return result
         
     except Exception as e:
-        logger.error(f"Error in get_opportunities: {e}")
+        logger.error(f"Error in get_top_opportunities: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/opportunities/simple", response_class=PlainTextResponse)
-def get_opportunities_simple(limit: int = 20):
-    """قائمة بسيطة نصية للتطبيق"""
-    
-    cache_key = f"opportunities_simple_{limit}"
-    cached = get_cache(cache_key)
-    if cached:
-        return cached
-    
-    logger.info(f"Analyzing {len(SHARIAH_STOCKS)} stocks for simple view...")
-    
-    simple_list = []
-    symbols = [s[0] for s in SHARIAH_STOCKS[:100]]
-    
-    try:
-        data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
-        
-        for symbol, name in SHARIAH_STOCKS[:100]:
-            try:
-                if len(symbols) > 1:
-                    stock_data = data[symbol].copy()
-                else:
-                    stock_data = data.copy()
-                
-                if stock_data.empty:
-                    continue
-                
-                stock_data = calculate_indicators(stock_data)
-                
-                if stock_data.empty or len(stock_data) < 50:
-                    continue
-                
-                latest = stock_data.iloc[-1]
-                current_price = latest['Close']
-                
-                score = calculate_score(latest, current_price)
-                signal = get_signal(score)
-                
-                # تنسيق النص
-                name_short = name[:25] if len(name) > 25 else name
-                line = f"{symbol} | {name_short} | ${round(float(current_price), 2)} | {signal}"
-                
-                simple_list.append({
-                    "text": line,
-                    "score": round(score, 1)
-                })
-                
-            except Exception as e:
-                logger.error(f"Error analyzing {symbol}: {e}")
-                continue
-        
-        # ترتيب حسب النقاط
-        simple_list.sort(key=lambda x: x['score'], reverse=True)
-        
-        # استخراج النصوص فقط
-        stocks_text = [item['text'] for item in simple_list[:limit]]
-        
-        # إرجاع نص مباشر
-        result = "\n".join(stocks_text)
-        
-        set_cache(cache_key, result)
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error in get_opportunities_simple: {e}")
-        return f"Error: {str(e)}"
-
-@app.get("/stock/{symbol}")
-def get_stock_analysis(symbol: str):
-    """تحليل كامل لسهم معين"""
+@app.get("/analysis/{symbol}")
+def get_detailed_analysis(symbol: str):
+    """تحليل مفصل لسهم معين باستخدام Claude AI"""
     
     symbol = symbol.upper()
-    
-    cache_key = f"stock_{symbol}"
+    cache_key = f"analysis_{symbol}"
     cached = get_cache(cache_key)
     if cached:
         return cached
@@ -343,6 +354,7 @@ def get_stock_analysis(symbol: str):
         raise HTTPException(status_code=404, detail="Stock not in Shariah-compliant list")
     
     try:
+        # جلب البيانات
         stock = yf.Ticker(symbol)
         df = stock.history(period="6mo")
         
@@ -356,7 +368,8 @@ def get_stock_analysis(symbol: str):
         score = calculate_score(latest, current_price)
         signal = get_signal(score)
         
-        result = {
+        # البيانات الأساسية
+        basic_data = {
             "symbol": symbol,
             "name": stock_info[1],
             "price": round(float(current_price), 2),
@@ -367,17 +380,76 @@ def get_stock_analysis(symbol: str):
                 "rsi": round(float(latest['RSI']), 2),
                 "macd": round(float(latest['MACD']), 4),
                 "macd_signal": round(float(latest['MACD_Signal']), 4),
-                "macd_hist": round(float(latest['MACD_Hist']), 4),
                 "sma_20": round(float(latest['SMA_20']), 2),
                 "sma_50": round(float(latest['SMA_50']), 2),
                 "bb_upper": round(float(latest['BB_upper']), 2),
                 "bb_lower": round(float(latest['BB_lower']), 2),
-            },
-            "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat()
+            }
         }
         
-        set_cache(cache_key, result)
-        return result
+        # تحليل Claude AI
+        if claude_client:
+            try:
+                prompt = f"""أنت محلل أسهم خبير. قدم تحليلاً مفصلاً للسهم التالي:
+
+الشركة: {stock_info[1]} ({symbol})
+السعر الحالي: ${current_price:.2f}
+التغير: {basic_data['change_pct']}%
+
+المؤشرات الفنية:
+- RSI: {basic_data['indicators']['rsi']}
+- MACD: {basic_data['indicators']['macd']}
+- SMA 20: ${basic_data['indicators']['sma_20']}
+- SMA 50: ${basic_data['indicators']['sma_50']}
+- Bollinger Upper: ${basic_data['indicators']['bb_upper']}
+- Bollinger Lower: ${basic_data['indicators']['bb_lower']}
+
+قدم تحليلاً يتضمن:
+1. نقطة الدخول المثالية (رقم محدد)
+2. الهدف الأول (قصير المدى 1-3 أيام) - رقم محدد
+3. الهدف الثاني (متوسط المدى أسبوع-أسبوعين) - رقم محدد
+4. وقف الخسارة (رقم محدد)
+5. نسبة النجاح المتوقعة (%)
+6. تاريخ صلاحية التحليل
+7. تحليل مختصر (3-4 أسطر)
+
+أرجع الرد بصيغة JSON:
+{{
+  "entry_point": 000.00,
+  "target_short": 000.00,
+  "target_medium": 000.00,
+  "stop_loss": 000.00,
+  "success_rate": 00,
+  "valid_until": "YYYY-MM-DD",
+  "analysis": "النص"
+}}"""
+
+                message = claude_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                
+                claude_response = message.content[0].text.strip()
+                # استخراج JSON من الرد
+                if "```json" in claude_response:
+                    claude_response = claude_response.split("```json")[1].split("```")[0].strip()
+                elif "```" in claude_response:
+                    claude_response = claude_response.split("```")[1].split("```")[0].strip()
+                
+                claude_analysis = json.loads(claude_response)
+                basic_data["claude_analysis"] = claude_analysis
+                
+            except Exception as e:
+                logger.error(f"Claude analysis error: {e}")
+                basic_data["claude_analysis"] = None
+        else:
+            basic_data["claude_analysis"] = None
+        
+        basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
+        
+        set_cache(cache_key, basic_data)
+        return basic_data
         
     except HTTPException:
         raise
@@ -385,24 +457,19 @@ def get_stock_analysis(symbol: str):
         logger.error(f"Error analyzing {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/scheduler/status")
-def scheduler_status():
-    """حالة النظام"""
+@app.get("/market-status")
+def market_status():
+    """حالة السوق والنظام"""
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
     
-    market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
-    is_weekday = now_et.weekday() < 5
-    is_market_hours = market_open <= now_et <= market_close and is_weekday
-    
     return {
-        "scheduler_running": True,
-        "market_open": is_market_hours,
+        "market_open": is_market_open(),
         "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"),
         "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)",
         "total_stocks": len(SHARIAH_STOCKS),
-        "cache_duration": f"{CACHE_DURATION} seconds"
+        "cache_duration": f"{CACHE_DURATION} seconds",
+        "claude_enabled": claude_client is not None
     }
 
 if __name__ == "__main__":
