@@ -642,6 +642,34 @@
                         </div>
                     `;
                 }
+                // عرض الأخبار
+                if (data.news && data.news.length > 0) {
+                    analysisHTML += `
+                        <div class="detail-section">
+                            <div class="section-title">📰 آخر الأخبار</div>
+                    `;
+                    
+                    for (const newsItem of data.news) {
+                        const newsDate = new Date(newsItem.timestamp * 1000);
+                        const timeAgo = getTimeAgo(newsDate);
+                        
+                        analysisHTML += `
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
+                                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+                                    ${newsItem.title}
+                                </div>
+                                <div style="font-size: 0.85em; color: #666;">
+                                    ${newsItem.publisher} • ${timeAgo}
+                                </div>
+                                <a href="${newsItem.link}" target="_blank" style="font-size: 0.85em; color: #667eea; text-decoration: none;">
+                                    اقرأ المزيد ←
+                                </a>
+                            </div>
+                        `;
+                    }
+                    
+                    analysisHTML += `</div>`;
+                }
 
                 analysisHTML += `
                     <div class="detail-section">
