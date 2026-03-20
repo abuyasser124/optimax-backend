@@ -1,4 +1,23 @@
-from fastapi import def get_time_ago_arabic(timestamp):
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import pytz
+from typing import List, Dict, Optional
+import anthropic
+import os
+from functools import lru_cache
+import logging
+import json
+
+# إعداد السجلات
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def get_time_ago_arabic(timestamp):
     """حساب الوقت بالعربي"""
     try:
         if timestamp == 0:
@@ -22,24 +41,7 @@ from fastapi import def get_time_ago_arabic(timestamp):
             days = int(seconds / 86400)
             return f"منذ {days} يوم"
     except:
-        return "غير محدد" FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import yfinance as yf
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import pytz
-from typing import List, Dict, Optional
-import anthropic
-import os
-from functools import lru_cache
-import logging
-import json
-
-# إعداد السجلات
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+        return "غير محدد"
 
 app = FastAPI(title="OptiMax API", version="2.0.0")
 
@@ -533,13 +535,6 @@ def get_detailed_analysis(symbol: str):
         except Exception as e:
             logger.error(f"Error fetching news: {e}")
             basic_data["news"] = []
-            basic_data["news"] = news_list
-        except Exception as e:
-            logger.error(f"Error fetching news: {e}")
-            basic_data["news"] = []
-        
-        set_cache(cache_key, basic_data)
-        return basic_data
         
         set_cache(cache_key, basic_data)
         return basic_data
