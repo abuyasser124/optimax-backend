@@ -12,6 +12,7 @@ import os
 from functools import lru_cache
 import logging
 import json
+import requests
 
 # إعداد السجلات
 logging.basicConfig(level=logging.INFO)
@@ -476,17 +477,27 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-        # جلب الأخبار مع تحليل Claude
+        # جلب الأخبار من Alpha Vantage
         try:
             news_list = []
-            ticker_news = stock.news
-            if ticker_news and len(ticker_news) > 0 and claude_client:
-                # أخذ أول 3 أخبار
-                news_titles = [item.get("title", "") for item in ticker_news[:3] if item.get("title")]
+            
+            if ALPHA_VANTAGE_API_KEY:
+                import requests
                 
-                if news_titles:
-                    # تحليل الأخبار بـ Claude
-                    news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
+                news_url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_API_KEY}&limit=3"
+                news_response = requests.get(news_url, timeout=10)
+                
+                if news_response.status_code == 200:
+                    news_data = news_response.json()
+                    
+                    if "feed" in news_data and len(news_data["feed"]) > 0:
+                        # أخذ أول 3 أخبار
+                        news_items = news_data["feed"][:3]
+                        news_titles = [item.get("title", "") for item in news_items]
+                        
+                        if news_titles and claude_client:
+                            # تحليل الأخبار بـ Claude
+                            news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
 
 {chr(10).join([f"{i+1}. {title}" for i, title in enumerate(news_titles)])}
 
@@ -495,49 +506,64 @@ def get_detailed_analysis(symbol: str):
   {{"sentiment": "positive/negative/neutral", "emoji": "🟢/🔴/🟡"}},
   ...
 ]"""
-                    
-                    try:
-                        sentiment_response = claude_client.messages.create(
-                            model="claude-sonnet-4-20250514",
-                            max_tokens=300,
-                            messages=[{"role": "user", "content": news_prompt}]
-                        )
-                        
-                        sentiment_text = sentiment_response.content[0].text.strip()
-                        if "```json" in sentiment_text:
-                            sentiment_text = sentiment_text.split("```json")[1].split("```")[0].strip()
-                        elif "```" in sentiment_text:
-                            sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
-                        
-                        sentiments = json.loads(sentiment_text)
-                        
-                        for i, item in enumerate(ticker_news[:3]):
-                            if i < len(sentiments):
-                                news_list.append({
-                                    "title": item.get("title", ""),
-                                    "publisher": item.get("publisher", ""),
-                                    "link": item.get("link", ""),
-                                    "sentiment": sentiments[i].get("sentiment", "neutral"),
-                                    "emoji": sentiments[i].get("emoji", "🟡"),
-                                    "time_ago": get_time_ago_arabic(item.get("providerPublishTime", 0))
-                                })
-                    except:
-                        # إذا فشل تحليل Claude، نضيف بدون تحليل
-                        for item in ticker_news[:3]:
-                            news_list.append({
-                                "title": item.get("title", ""),
-                                "publisher": item.get("publisher", ""),
-                                "link": item.get("link", ""),
-                                "sentiment": "neutral",
-                                "emoji": "🟡",
-                                "time_ago": get_time_ago_arabic(item.get("providerPublishTime", 0))
-                            })
+                            
+                            try:
+                                sentiment_response = claude_client.messages.create(
+                                    model="claude-sonnet-4-20250514",
+                                    max_tokens=300,
+                                    messages=[{"role": "user", "content": news_prompt}]
+                                )
+                                
+                                sentiment_text = sentiment_response.content[0].text.strip()
+                                if "```json" in sentiment_text:
+                                    sentiment_text = sentiment_text.split("```json")[1].split("```")[0].strip()
+                                elif "```" in sentiment_text:
+                                    sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
+                                
+                                sentiments = json.loads(sentiment_text)
+                                
+                                for i, item in enumerate(news_items):
+                                    if i < len(sentiments):
+                                        # تحويل timestamp
+                                        time_str = item.get("time_published", "")
+                                        try:
+                                            news_datetime = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+                                            timestamp = int(news_datetime.timestamp())
+                                        except:
+                                            timestamp = 0
+                                        
+                                        news_list.append({
+                                            "title": item.get("title", ""),
+                                            "publisher": item.get("source", ""),
+                                            "link": item.get("url", ""),
+                                            "sentiment": sentiments[i].get("sentiment", "neutral"),
+                                            "emoji": sentiments[i].get("emoji", "🟡"),
+                                            "time_ago": get_time_ago_arabic(timestamp)
+                                        })
+                            except Exception as e:
+                                logger.error(f"Claude sentiment analysis error: {e}")
+                                # إذا فشل تحليل Claude، نضيف بدون تحليل
+                                for item in news_items:
+                                    time_str = item.get("time_published", "")
+                                    try:
+                                        news_datetime = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
+                                        timestamp = int(news_datetime.timestamp())
+                                    except:
+                                        timestamp = 0
+                                    
+                                    news_list.append({
+                                        "title": item.get("title", ""),
+                                        "publisher": item.get("source", ""),
+                                        "link": item.get("url", ""),
+                                        "sentiment": "neutral",
+                                        "emoji": "🟡",
+                                        "time_ago": get_time_ago_arabic(timestamp)
+                                    })
             
             basic_data["news"] = news_list
         except Exception as e:
-            logger.error(f"Error fetching news: {e}")
+            logger.error(f"Error fetching news from Alpha Vantage: {e}")
             basic_data["news"] = []
-        
         set_cache(cache_key, basic_data)
         return basic_data
         
