@@ -1,4 +1,28 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import def get_time_ago_arabic(timestamp):
+    """حساب الوقت بالعربي"""
+    try:
+        if timestamp == 0:
+            return "غير محدد"
+        
+        news_date = datetime.fromtimestamp(timestamp, tz=pytz.timezone('US/Eastern'))
+        now = datetime.now(pytz.timezone('US/Eastern'))
+        diff = now - news_date
+        
+        seconds = diff.total_seconds()
+        
+        if seconds < 60:
+            return "منذ لحظات"
+        elif seconds < 3600:
+            mins = int(seconds / 60)
+            return f"منذ {mins} دقيقة"
+        elif seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"منذ {hours} ساعة"
+        else:
+            days = int(seconds / 86400)
+            return f"منذ {days} يوم"
+    except:
+        return "غير محدد" FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import yfinance as yf
@@ -448,18 +472,67 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-        # جلب الأخبار
+        # جلب الأخبار مع تحليل Claude
         try:
             news_list = []
             ticker_news = stock.news
-            if ticker_news and len(ticker_news) > 0:
-                for item in ticker_news[:3]:  # أول 3 أخبار
-                    news_list.append({
-                        "title": item.get("title", ""),
-                        "publisher": item.get("publisher", ""),
-                        "link": item.get("link", ""),
-                        "timestamp": item.get("providerPublishTime", 0)
-                    })
+            if ticker_news and len(ticker_news) > 0 and claude_client:
+                # أخذ أول 3 أخبار
+                news_titles = [item.get("title", "") for item in ticker_news[:3] if item.get("title")]
+                
+                if news_titles:
+                    # تحليل الأخبار بـ Claude
+                    news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
+
+{chr(10).join([f"{i+1}. {title}" for i, title in enumerate(news_titles)])}
+
+أرجع JSON فقط:
+[
+  {{"sentiment": "positive/negative/neutral", "emoji": "🟢/🔴/🟡"}},
+  ...
+]"""
+                    
+                    try:
+                        sentiment_response = claude_client.messages.create(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=300,
+                            messages=[{"role": "user", "content": news_prompt}]
+                        )
+                        
+                        sentiment_text = sentiment_response.content[0].text.strip()
+                        if "```json" in sentiment_text:
+                            sentiment_text = sentiment_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in sentiment_text:
+                            sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
+                        
+                        sentiments = json.loads(sentiment_text)
+                        
+                        for i, item in enumerate(ticker_news[:3]):
+                            if i < len(sentiments):
+                                news_list.append({
+                                    "title": item.get("title", ""),
+                                    "publisher": item.get("publisher", ""),
+                                    "link": item.get("link", ""),
+                                    "sentiment": sentiments[i].get("sentiment", "neutral"),
+                                    "emoji": sentiments[i].get("emoji", "🟡"),
+                                    "time_ago": get_time_ago_arabic(item.get("providerPublishTime", 0))
+                                })
+                    except:
+                        # إذا فشل تحليل Claude، نضيف بدون تحليل
+                        for item in ticker_news[:3]:
+                            news_list.append({
+                                "title": item.get("title", ""),
+                                "publisher": item.get("publisher", ""),
+                                "link": item.get("link", ""),
+                                "sentiment": "neutral",
+                                "emoji": "🟡",
+                                "time_ago": get_time_ago_arabic(item.get("providerPublishTime", 0))
+                            })
+            
+            basic_data["news"] = news_list
+        except Exception as e:
+            logger.error(f"Error fetching news: {e}")
+            basic_data["news"] = []
             basic_data["news"] = news_list
         except Exception as e:
             logger.error(f"Error fetching news: {e}")
