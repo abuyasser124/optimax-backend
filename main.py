@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -81,7 +82,7 @@ SHARIAH_STOCKS = [
 # Cache
 _cache = {}
 _cache_time = {}
-CACHE_DURATION = 300  # 5 minutes
+CACHE_DURATION = 300 # 5 minutes
 
 def get_cache(key):
     if key in _cache:
@@ -259,9 +260,9 @@ def get_opportunities(limit: int = 20):
         logger.error(f"Error in get_opportunities: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/opportunities/simple")
+@app.get("/opportunities/simple", response_class=PlainTextResponse)
 def get_opportunities_simple(limit: int = 20):
-    """قائمة بسيطة JSON للتطبيق"""
+    """قائمة بسيطة نصية للتطبيق"""
     
     cache_key = f"opportunities_simple_{limit}"
     cached = get_cache(cache_key)
@@ -297,9 +298,9 @@ def get_opportunities_simple(limit: int = 20):
                 score = calculate_score(latest, current_price)
                 signal = get_signal(score)
                 
-                # تنسيق بسيط
-                name_short = name[:20] if len(name) > 20 else name
-                line = f"{symbol} - {name_short} - ${round(float(current_price), 2)} - {signal}"
+                # تنسيق النص
+                name_short = name[:25] if len(name) > 25 else name
+                line = f"{symbol} | {name_short} | ${round(float(current_price), 2)} | {signal}"
                 
                 simple_list.append({
                     "text": line,
@@ -313,17 +314,18 @@ def get_opportunities_simple(limit: int = 20):
         # ترتيب حسب النقاط
         simple_list.sort(key=lambda x: x['score'], reverse=True)
         
-        # استخراج النصوص فقط كـ array
-        stocks_array = [item['text'] for item in simple_list[:limit]]
+        # استخراج النصوص فقط
+        stocks_text = [item['text'] for item in simple_list[:limit]]
         
-        result = stocks_array
+        # إرجاع نص مباشر
+        result = "\n".join(stocks_text)
         
         set_cache(cache_key, result)
         return result
         
     except Exception as e:
         logger.error(f"Error in get_opportunities_simple: {e}")
-        return []
+        return f"Error: {str(e)}"
 
 @app.get("/stock/{symbol}")
 def get_stock_analysis(symbol: str):
