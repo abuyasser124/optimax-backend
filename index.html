@@ -650,20 +650,30 @@
                     `;
                     
                     for (const newsItem of data.news) {
-                        const newsDate = new Date(newsItem.timestamp * 1000);
-                        const timeAgo = getTimeAgo(newsDate);
+                        const sentimentClass = newsItem.sentiment === 'positive' ? 'rating-positive' : 
+                                              newsItem.sentiment === 'negative' ? 'rating-negative' : 
+                                              'rating-neutral';
+                        const sentimentText = newsItem.sentiment === 'positive' ? 'إيجابي' : 
+                                             newsItem.sentiment === 'negative' ? 'سلبي' : 
+                                             'محايد';
                         
                         analysisHTML += `
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px;">
-                                <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-right: 4px solid ${newsItem.sentiment === 'positive' ? '#10b981' : newsItem.sentiment === 'negative' ? '#ef4444' : '#f59e0b'};">
+                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                    <span style="font-size: 1.2em;">${newsItem.emoji}</span>
+                                    <span class="${sentimentClass}" style="font-weight: bold; font-size: 0.9em;">
+                                        ${sentimentText}
+                                    </span>
+                                    <span style="color: #999; font-size: 0.85em; margin-right: auto;">
+                                        ${newsItem.time_ago}
+                                    </span>
+                                </div>
+                                <div style="font-weight: bold; color: #333; margin-bottom: 5px; line-height: 1.4;">
                                     ${newsItem.title}
                                 </div>
                                 <div style="font-size: 0.85em; color: #666;">
-                                    ${newsItem.publisher} • ${timeAgo}
+                                    ${newsItem.publisher}
                                 </div>
-                                <a href="${newsItem.link}" target="_blank" style="font-size: 0.85em; color: #667eea; text-decoration: none;">
-                                    اقرأ المزيد ←
-                                </a>
                             </div>
                         `;
                     }
