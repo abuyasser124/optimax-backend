@@ -448,6 +448,26 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
+        # جلب الأخبار
+        try:
+            news_list = []
+            ticker_news = stock.news
+            if ticker_news and len(ticker_news) > 0:
+                for item in ticker_news[:3]:  # أول 3 أخبار
+                    news_list.append({
+                        "title": item.get("title", ""),
+                        "publisher": item.get("publisher", ""),
+                        "link": item.get("link", ""),
+                        "timestamp": item.get("providerPublishTime", 0)
+                    })
+            basic_data["news"] = news_list
+        except Exception as e:
+            logger.error(f"Error fetching news: {e}")
+            basic_data["news"] = []
+        
+        set_cache(cache_key, basic_data)
+        return basic_data
+        
         set_cache(cache_key, basic_data)
         return basic_data
         
