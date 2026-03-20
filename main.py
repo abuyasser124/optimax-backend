@@ -300,7 +300,7 @@ def get_opportunities_simple(limit: int = 20):
                 
                 # تنسيق النص
                 name_short = name[:25] if len(name) > 25 else name
-                line = f"{symbol} | {name_short} | ${round(float(current_price), 2)} | {signal}"
+                line = f"{symbol} - {name_short} - ${round(float(current_price), 2)} - {signal}"
                 
                 simple_list.append({
                     "text": line,
