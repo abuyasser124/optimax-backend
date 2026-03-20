@@ -57,6 +57,8 @@ app.add_middleware(
 # Claude API
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+# Alpha Vantage API
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
 # قائمة الأسهم الشرعية (400 سهم)
 SHARIAH_STOCKS = [
