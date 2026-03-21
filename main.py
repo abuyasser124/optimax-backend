@@ -58,6 +58,7 @@ app.add_middleware(
 # Claude API
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
+
 # Alpha Vantage API
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
@@ -477,20 +478,25 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-   # جلب الأخبار من Alpha Vantage
+        # جلب الأخبار من Alpha Vantage
         try:
             news_list = []
             
             if ALPHA_VANTAGE_API_KEY:
-                import requests
+                logger.info(f"Fetching news for {symbol} from Alpha Vantage...")
                 
                 news_url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_API_KEY}&limit=3"
+                logger.info(f"News URL: {news_url}")
+                
                 news_response = requests.get(news_url, timeout=10)
+                logger.info(f"News response status: {news_response.status_code}")
                 
                 if news_response.status_code == 200:
                     news_data = news_response.json()
+                    logger.info(f"Alpha Vantage response keys: {news_data.keys()}")
                     
                     if "feed" in news_data and len(news_data["feed"]) > 0:
+                        logger.info(f"Found {len(news_data['feed'])} news items")
                         # أخذ أول 3 أخبار
                         news_items = news_data["feed"][:3]
                         news_titles = [item.get("title", "") for item in news_items]
@@ -540,6 +546,7 @@ def get_detailed_analysis(symbol: str):
                                             "emoji": sentiments[i].get("emoji", "🟡"),
                                             "time_ago": get_time_ago_arabic(timestamp)
                                         })
+                                logger.info(f"Added {len(news_list)} news items with Claude sentiment")
                             except Exception as e:
                                 logger.error(f"Claude sentiment analysis error: {e}")
                                 # إذا فشل تحليل Claude، نضيف بدون تحليل
@@ -559,14 +566,23 @@ def get_detailed_analysis(symbol: str):
                                         "emoji": "🟡",
                                         "time_ago": get_time_ago_arabic(timestamp)
                                     })
+                                logger.info(f"Added {len(news_list)} news items without sentiment")
+                    else:
+                        logger.warning(f"No feed in Alpha Vantage response for {symbol}")
+                else:
+                    logger.error(f"Alpha Vantage returned status {news_response.status_code}")
+            else:
+                logger.warning("ALPHA_VANTAGE_API_KEY not configured")
             
-            basic_data["news"] = news_list  # ← هنا! خارج if
+            basic_data["news"] = news_list
+            logger.info(f"Final news list has {len(news_list)} items")
         except Exception as e:
             logger.error(f"Error fetching news from Alpha Vantage: {e}")
             basic_data["news"] = []
         
         set_cache(cache_key, basic_data)
-        return basic_data     
+        return basic_data
+        
     except HTTPException:
         raise
     except Exception as e:
