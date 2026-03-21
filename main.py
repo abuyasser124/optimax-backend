@@ -481,7 +481,10 @@ def get_detailed_analysis(symbol: str):
         # جلب الأخبار من Yahoo Finance
         try:
             news_list = []
+            logger.info(f"Attempting to fetch news for {symbol}")
             ticker_news = stock.news
+            logger.info(f"Yahoo Finance news type: {type(ticker_news)}")
+            logger.info(f"Yahoo Finance news content: {ticker_news}")
             
             if ticker_news and len(ticker_news) > 0:
                 logger.info(f"Found {len(ticker_news)} news items from Yahoo Finance")
