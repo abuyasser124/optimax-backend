@@ -263,12 +263,14 @@ def calculate_score(row, current_price, prev_close, df):
     signals = []
     
     try:
+        sma_200_penalty = 0
         if not pd.isna(row['SMA_200']):
             if current_price > row['SMA_200']:
                 score += 2.0
                 signals.append("فوق SMA-200 (اتجاه صاعد)")
             else:
-                signals.append("تحت SMA-200 (حذر)")
+                sma_200_penalty = -0.5
+                signals.append("تحت SMA-200 (تحذير)")
         
         volume_ratio = row['Volume'] / row['Volume_SMA'] if row['Volume_SMA'] > 0 else 1
         
@@ -313,6 +315,22 @@ def calculate_score(row, current_price, prev_close, df):
             elif row['ADX'] < 20:
                 signals.append("ADX ضعيف (سوق جانبي)")
         
+        # بونص MFI + ADX
+        strong_momentum = False
+        if not pd.isna(row['MFI']) and not pd.isna(row['ADX']) and not pd.isna(row['MFI_Change']):
+            if row['MFI_Change'] > 0 and row['ADX'] > 25:
+                score += 2.5
+                strong_momentum = True
+                signals.append("⚡ MFI صاعد + ADX قوي (زخم استثنائي)")
+        
+        # إلغاء عقوبة SMA-200 عند الزخم القوي
+        if strong_momentum and not pd.isna(row['ROC']):
+            if row['ROC'] > 5:
+                score -= sma_200_penalty
+                if sma_200_penalty < 0:
+                    signals.append("✓ زخم قوي يتجاوز SMA-200")
+        else:
+            score += sma_200_penalty
         if not pd.isna(row['ROC']):
             if row['ROC'] > 5:
                 score += 0.5
@@ -501,7 +519,7 @@ def get_detailed_analysis(symbol: str):
         signal = get_signal(score)
         
         atr_value = latest['ATR']
-        dynamic_stop = current_price - (2 * atr_value)
+        dynamic_stop = current_price - (1.5 * atr_value)
         
         basic_data = {
             "symbol": symbol,
