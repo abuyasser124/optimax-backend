@@ -64,6 +64,7 @@ ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
 # قائمة الأسهم الشرعية (400 سهم)
 SHARIAH_STOCKS = [
+    # Technology & Software (60 stocks)
     ("AAPL", "Apple Inc"), ("MSFT", "Microsoft Corporation"), ("GOOGL", "Alphabet Inc Class A"),
     ("GOOG", "Alphabet Inc Class C"), ("NVDA", "NVIDIA Corporation"), ("META", "Meta Platforms Inc"),
     ("TSLA", "Tesla Inc"), ("AMZN", "Amazon.com Inc"), ("AMD", "Advanced Micro Devices Inc"),
@@ -79,41 +80,124 @@ SHARIAH_STOCKS = [
     ("TEAM", "Atlassian Corporation"), ("ZM", "Zoom Video Communications"), ("DOCU", "DocuSign Inc"),
     ("PLTR", "Palantir Technologies Inc"), ("PANW", "Palo Alto Networks Inc"), ("CRWD", "CrowdStrike Holdings Inc"),
     ("FTNT", "Fortinet Inc"), ("ZS", "Zscaler Inc"), ("OKTA", "Okta Inc"),
-    ("NET", "Cloudflare Inc"), ("CSCO", "Cisco Systems Inc"), ("SHOP", "Shopify Inc"),
-    ("EBAY", "eBay Inc"), ("ETSY", "Etsy Inc"), ("DASH", "DoorDash Inc"),
-    ("UBER", "Uber Technologies Inc"), ("LYFT", "Lyft Inc"), ("ABNB", "Airbnb Inc"),
-    ("PYPL", "PayPal Holdings Inc"), ("SQ", "Block Inc"), ("COIN", "Coinbase Global Inc"),
-    ("AFRM", "Affirm Holdings Inc"), ("AMGN", "Amgen Inc"), ("GILD", "Gilead Sciences Inc"),
-    ("REGN", "Regeneron Pharmaceuticals"), ("VRTX", "Vertex Pharmaceuticals Inc"), ("BIIB", "Biogen Inc"),
-    ("ILMN", "Illumina Inc"), ("ISRG", "Intuitive Surgical Inc"), ("DXCM", "DexCom Inc"),
-    ("ALGN", "Align Technology Inc"), ("ABT", "Abbott Laboratories"), ("TMO", "Thermo Fisher Scientific Inc"),
-    ("DHR", "Danaher Corporation"), ("SYK", "Stryker Corporation"), ("EW", "Edwards Lifesciences Corporation"),
-    ("BSX", "Boston Scientific Corporation"), ("COST", "Costco Wholesale Corporation"), ("NKE", "NIKE Inc"),
-    ("SBUX", "Starbucks Corporation"), ("MCD", "McDonald's Corporation"), ("DIS", "The Walt Disney Company"),
-    ("LULU", "Lululemon Athletica Inc"), ("NFLX", "Netflix Inc"), ("FSLR", "First Solar Inc"),
-    ("ENPH", "Enphase Energy Inc"), ("SEDG", "SolarEdge Technologies Inc"), ("RUN", "Sunrun Inc"),
-    ("GNRC", "Generac Holdings Inc"), ("INCY", "Incyte Corporation"), ("ALNY", "Alnylam Pharmaceuticals Inc"),
-    ("MRNA", "Moderna Inc"), ("BNTX", "BioNTech SE"), ("IDXX", "IDEXX Laboratories Inc"),
-    ("ZBH", "Zimmer Biomet Holdings Inc"), ("BDX", "Becton Dickinson and Company"), ("BAX", "Baxter International Inc"),
-    ("RMD", "ResMed Inc"), ("WMT", "Walmart Inc"), ("TGT", "Target Corporation"),
-    ("HD", "The Home Depot Inc"), ("LOW", "Lowe's Companies Inc"), ("TJX", "The TJX Companies Inc"),
-    ("ROST", "Ross Stores Inc"), ("DG", "Dollar General Corporation"), ("DLTR", "Dollar Tree Inc"),
-    ("ULTA", "Ulta Beauty Inc"), ("YUM", "Yum! Brands Inc"), ("CMG", "Chipotle Mexican Grill Inc"),
-    ("SPOT", "Spotify Technology SA"), ("ROKU", "Roku Inc"), ("PINS", "Pinterest Inc"),
-    ("SNAP", "Snap Inc"), ("MTCH", "Match Group Inc"), ("RBLX", "Roblox Corporation"),
-    ("U", "Unity Software Inc"), ("TTWO", "Take-Two Interactive Software"), ("EA", "Electronic Arts Inc"),
-    ("RIVN", "Rivian Automotive Inc"), ("LCID", "Lucid Group Inc"), ("F", "Ford Motor Company"),
-    ("GM", "General Motors Company"), ("PLUG", "Plug Power Inc"), ("CHPT", "ChargePoint Holdings Inc"),
-    ("BLNK", "Blink Charging Co"), ("QS", "QuantumScape Corporation"), ("CAT", "Caterpillar Inc"),
-    ("DE", "Deere & Company"), ("ETN", "Eaton Corporation"), ("EMR", "Emerson Electric Co"),
-    ("LIN", "Linde plc"), ("APD", "Air Products and Chemicals Inc"), ("ECL", "Ecolab Inc"),
-    ("DD", "DuPont de Nemours Inc"), ("BA", "Boeing Company"), ("GE", "General Electric Company"),
-    ("HON", "Honeywell International Inc"), ("DELL", "Dell Technologies Inc"), ("HPQ", "HP Inc"),
-    ("HPE", "Hewlett Packard Enterprise"), ("AI", "C3.ai Inc"), ("PATH", "UiPath Inc"),
-    ("TTD", "The Trade Desk Inc"), ("Z", "Zillow Group Inc"), ("CMCSA", "Comcast Corporation"),
-    ("T", "AT&T Inc"), ("VZ", "Verizon Communications Inc"), ("TMUS", "T-Mobile US Inc"),
+    ("NET", "Cloudflare Inc"), ("CSCO", "Cisco Systems Inc"), ("IBM", "IBM Corporation"),
+    ("DELL", "Dell Technologies Inc"), ("HPQ", "HP Inc"), ("HPE", "Hewlett Packard Enterprise"),
+    ("FICO", "Fair Isaac Corporation"), ("ANSS", "ANSYS Inc"), ("INTU", "Intuit Inc"),
+    ("TYL", "Tyler Technologies Inc"), ("RNG", "RingCentral Inc"), ("TWLO", "Twilio Inc"),
+    ("DBX", "Dropbox Inc"), ("BOX", "Box Inc"), ("ZI", "ZoomInfo Technologies Inc"),
+    ("VEEV", "Veeva Systems Inc"),
+    
+    # E-Commerce & Consumer Internet (30 stocks)
+    ("SHOP", "Shopify Inc"), ("EBAY", "eBay Inc"), ("ETSY", "Etsy Inc"),
+    ("DASH", "DoorDash Inc"), ("UBER", "Uber Technologies Inc"), ("LYFT", "Lyft Inc"),
+    ("ABNB", "Airbnb Inc"), ("PYPL", "PayPal Holdings Inc"), ("SQ", "Block Inc"),
+    ("COIN", "Coinbase Global Inc"), ("AFRM", "Affirm Holdings Inc"), ("SPOT", "Spotify Technology SA"),
+    ("ROKU", "Roku Inc"), ("PINS", "Pinterest Inc"), ("SNAP", "Snap Inc"),
+    ("MTCH", "Match Group Inc"), ("RBLX", "Roblox Corporation"), ("U", "Unity Software Inc"),
+    ("TTWO", "Take-Two Interactive Software"), ("EA", "Electronic Arts Inc"), ("ATVI", "Activision Blizzard"),
+    ("NFLX", "Netflix Inc"), ("DIS", "The Walt Disney Company"), ("PARA", "Paramount Global"),
+    ("WBD", "Warner Bros Discovery"), ("FWONK", "Liberty Media Formula One"), ("LSXMA", "Liberty Media SiriusXM"),
+    ("CHTR", "Charter Communications"), ("CMCSA", "Comcast Corporation"), ("TMUS", "T-Mobile US Inc"),
+    
+    # Healthcare & Biotechnology (80 stocks)
+    ("AMGN", "Amgen Inc"), ("GILD", "Gilead Sciences Inc"), ("REGN", "Regeneron Pharmaceuticals"),
+    ("VRTX", "Vertex Pharmaceuticals Inc"), ("BIIB", "Biogen Inc"), ("ILMN", "Illumina Inc"),
+    ("ISRG", "Intuitive Surgical Inc"), ("DXCM", "DexCom Inc"), ("ALGN", "Align Technology Inc"),
+    ("ABT", "Abbott Laboratories"), ("TMO", "Thermo Fisher Scientific Inc"), ("DHR", "Danaher Corporation"),
+    ("SYK", "Stryker Corporation"), ("EW", "Edwards Lifesciences Corporation"), ("BSX", "Boston Scientific Corporation"),
+    ("INCY", "Incyte Corporation"), ("ALNY", "Alnylam Pharmaceuticals Inc"), ("MRNA", "Moderna Inc"),
+    ("BNTX", "BioNTech SE"), ("IDXX", "IDEXX Laboratories Inc"), ("ZBH", "Zimmer Biomet Holdings Inc"),
+    ("BDX", "Becton Dickinson and Company"), ("BAX", "Baxter International Inc"), ("RMD", "ResMed Inc"),
+    ("HOLX", "Hologic Inc"), ("TECH", "Bio-Techne Corporation"), ("RVTY", "Revvity Inc"),
+    ("IQV", "IQVIA Holdings Inc"), ("CRL", "Charles River Laboratories"), ("RGEN", "Repligen Corporation"),
+    ("EXAS", "Exact Sciences Corporation"), ("ARWR", "Arrowhead Pharmaceuticals"), ("IONS", "Ionis Pharmaceuticals"),
+    ("RARE", "Ultragenyx Pharmaceutical"), ("BMRN", "BioMarin Pharmaceutical"), ("SRPT", "Sarepta Therapeutics"),
+    ("NBIX", "Neurocrine Biosciences"), ("UTHR", "United Therapeutics"), ("JAZZ", "Jazz Pharmaceuticals"),
+    ("HALO", "Halozyme Therapeutics"), ("BLUE", "bluebird bio"), ("FOLD", "Amicus Therapeutics"),
+    ("LEGN", "Legend Biotech"), ("KRYS", "Krystal Biotech"), ("RCKT", "Rocket Pharmaceuticals"),
+    ("AGIO", "Agios Pharmaceuticals"), ("NTRA", "Natera Inc"), ("NVTA", "Invitae Corporation"),
+    ("PACB", "Pacific Biosciences"), ("VCYT", "Veracyte Inc"), ("CDNA", "CareDx Inc"),
+    ("IRTC", "iRhythm Technologies"), ("OFIX", "Orthofix Medical"), ("NVCR", "NovoCure Limited"),
+    ("TMDX", "TransMedics Group"), ("PRVA", "Privia Health Group"), ("CRVL", "CorVel Corporation"),
+    ("LFST", "LifeStance Health Group"), ("HIMS", "Hims & Hers Health"), ("DOCS", "Doximity Inc"),
+    ("TDOC", "Teladoc Health Inc"), ("OSCR", "Oscar Health"), ("CLOV", "Clover Health"),
+    ("SDGR", "Schrodinger Inc"), ("RXRX", "Recursion Pharmaceuticals"), ("ABCL", "AbCellera Biologics"),
+    ("RLAY", "Relay Therapeutics"), ("VERV", "Verve Therapeutics"), ("BEAM", "Beam Therapeutics"),
+    ("CRSP", "CRISPR Therapeutics"), ("EDIT", "Editas Medicine"), ("NTLA", "Intellia Therapeutics"),
+    ("CRBU", "Caribou Biosciences"), ("PRME", "Prime Medicine"), ("ACLX", "Arcellx Inc"),
+    ("SANA", "Sana Biotechnology"), ("DAWN", "Day One Biopharmaceuticals"), ("KROS", "Keros Therapeutics"),
+    ("IMVT", "Immunovant Inc"), ("ARVN", "Arvinas Inc"), ("KYMR", "Kymera Therapeutics"),
+    
+    # Consumer & Retail (50 stocks)
+    ("COST", "Costco Wholesale Corporation"), ("NKE", "NIKE Inc"), ("SBUX", "Starbucks Corporation"),
+    ("MCD", "McDonald's Corporation"), ("LULU", "Lululemon Athletica Inc"), ("WMT", "Walmart Inc"),
+    ("TGT", "Target Corporation"), ("HD", "The Home Depot Inc"), ("LOW", "Lowe's Companies Inc"),
+    ("TJX", "The TJX Companies Inc"), ("ROST", "Ross Stores Inc"), ("DG", "Dollar General Corporation"),
+    ("DLTR", "Dollar Tree Inc"), ("ULTA", "Ulta Beauty Inc"), ("YUM", "Yum! Brands Inc"),
+    ("CMG", "Chipotle Mexican Grill Inc"), ("BKNG", "Booking Holdings Inc"), ("MAR", "Marriott International"),
+    ("HLT", "Hilton Worldwide Holdings"), ("MGM", "MGM Resorts International"), ("WYNN", "Wynn Resorts Limited"),
+    ("LVS", "Las Vegas Sands Corp"), ("CZR", "Caesars Entertainment"), ("PENN", "PENN Entertainment"),
+    ("DKNG", "DraftKings Inc"), ("FLUT", "Flutter Entertainment"), ("CHWY", "Chewy Inc"),
+    ("CVNA", "Carvana Co"), ("CPNG", "Coupang Inc"), ("BABA", "Alibaba Group Holding"),
+    ("JD", "JD.com Inc"), ("PDD", "PDD Holdings Inc"), ("MELI", "MercadoLibre Inc"),
+    ("SE", "Sea Limited"), ("GRAB", "Grab Holdings Limited"), ("BEKE", "KE Holdings Inc"),
+    ("VIPS", "Vipshop Holdings Limited"), ("LI", "Li Auto Inc"), ("XPEV", "XPeng Inc"),
+    ("NIO", "NIO Inc"), ("BILI", "Bilibili Inc"), ("TME", "Tencent Music Entertainment"),
+    ("DIDI", "DiDi Global Inc"), ("TAL", "TAL Education Group"), ("EDU", "New Oriental Education"),
+    ("GOTU", "Gaotu Techedu Inc"), ("IQ", "iQIYI Inc"), ("NTES", "NetEase Inc"),
+    ("BIDU", "Baidu Inc"),
+    
+    # Clean Energy & Electric Vehicles (30 stocks)
+    ("FSLR", "First Solar Inc"), ("ENPH", "Enphase Energy Inc"), ("SEDG", "SolarEdge Technologies Inc"),
+    ("RUN", "Sunrun Inc"), ("GNRC", "Generac Holdings Inc"), ("RIVN", "Rivian Automotive Inc"),
+    ("LCID", "Lucid Group Inc"), ("PLUG", "Plug Power Inc"), ("CHPT", "ChargePoint Holdings Inc"),
+    ("BLNK", "Blink Charging Co"), ("QS", "QuantumScape Corporation"), ("ALB", "Albemarle Corporation"),
+    ("SQM", "Sociedad Quimica y Minera"), ("LAC", "Lithium Americas Corp"), ("LTHM", "Livent Corporation"),
+    ("MP", "MP Materials Corp"), ("NOVR", "Nova Royalty Corp"), ("BEAM", "Beam Global"),
+    ("WOLF", "Wolfspeed Inc"), ("OLED", "Universal Display Corporation"), ("POWI", "Power Integrations"),
+    ("VICR", "Vicor Corporation"), ("ON", "ON Semiconductor"), ("NXPI", "NXP Semiconductors"),
+    ("SLDP", "Solid Power Inc"), ("STEM", "Stem Inc"), ("FLNC", "Fluence Energy Inc"),
+    ("BE", "Bloom Energy Corporation"), ("FCEL", "FuelCell Energy Inc"), ("BLDP", "Ballard Power Systems"),
+    
+    # Industrial & Manufacturing (50 stocks)
+    ("CAT", "Caterpillar Inc"), ("DE", "Deere & Company"), ("ETN", "Eaton Corporation"),
+    ("EMR", "Emerson Electric Co"), ("LIN", "Linde plc"), ("APD", "Air Products and Chemicals Inc"),
+    ("ECL", "Ecolab Inc"), ("DD", "DuPont de Nemours Inc"), ("BA", "Boeing Company"),
+    ("GE", "General Electric Company"), ("HON", "Honeywell International Inc"), ("MMM", "3M Company"),
+    ("ITW", "Illinois Tool Works"), ("ROK", "Rockwell Automation"), ("PH", "Parker-Hannifin Corporation"),
+    ("IR", "Ingersoll Rand Inc"), ("CARR", "Carrier Global Corporation"), ("OTIS", "Otis Worldwide Corporation"),
+    ("TT", "Trane Technologies plc"), ("JCI", "Johnson Controls International"), ("AME", "AMETEK Inc"),
+    ("ROP", "Roper Technologies Inc"), ("FTV", "Fortive Corporation"), ("GNRC", "Generac Holdings Inc"),
+    ("WSO", "Watsco Inc"), ("FAST", "Fastenal Company"), ("WM", "Waste Management Inc"),
+    ("RSG", "Republic Services Inc"), ("WCN", "Waste Connections Inc"), ("SRCL", "Stericycle Inc"),
+    ("GFL", "GFL Environmental Inc"), ("RYN", "Rayonier Inc"), ("WY", "Weyerhaeuser Company"),
+    ("PCH", "PotlatchDeltic Corporation"), ("LPX", "Louisiana-Pacific Corporation"), ("BCC", "Boise Cascade Company"),
+    ("UFPI", "UFP Industries Inc"), ("TREX", "Trex Company Inc"), ("AZEK", "AZEK Company Inc"),
+    ("FND", "Floor & Decor Holdings"), ("BECN", "Beacon Roofing Supply"), ("OC", "Owens Corning"),
+    ("VMC", "Vulcan Materials Company"), ("MLM", "Martin Marietta Materials"), ("SUM", "Summit Materials Inc"),
+    ("USLM", "United States Lime & Minerals"), ("CRH", "CRH plc"), ("STRL", "Sterling Infrastructure Inc"),
+    ("MTZ", "MasTec Inc"), ("PRIM", "Primoris Services Corporation"),
+    
+    # Automotive (20 stocks)
+    ("F", "Ford Motor Company"), ("GM", "General Motors Company"), ("STLA", "Stellantis NV"),
+    ("TM", "Toyota Motor Corporation"), ("HMC", "Honda Motor Co Ltd"), ("NSANY", "Nissan Motor Co Ltd"),
+    ("HYMTF", "Hyundai Motor Company"), ("BMWYY", "BMW AG"), ("VWAGY", "Volkswagen AG"),
+    ("RACE", "Ferrari NV"), ("POAHY", "Porsche Automobil Holding"), ("GELYF", "Geely Automobile Holdings"),
+    ("FUJHY", "Subaru Corporation"), ("MZDAY", "Mazda Motor Corporation"), ("DDAIF", "Daimler Truck Holding AG"),
+    ("VLKAF", "Volvo AB"), ("PCAR", "PACCAR Inc"), ("NAV", "Navistar International"), ("CMI", "Cummins Inc"),
+    ("LEA", "Lear Corporation"),
+    
+    # Food & Beverage (30 stocks)
     ("PEP", "PepsiCo Inc"), ("KO", "Coca-Cola Company"), ("MDLZ", "Mondelez International"),
     ("GIS", "General Mills Inc"), ("K", "Kellogg Company"), ("CPB", "Campbell Soup Company"),
+    ("HSY", "Hershey Company"), ("SJM", "J.M. Smucker Company"), ("CAG", "Conagra Brands Inc"),
+    ("HRL", "Hormel Foods Corporation"), ("TSN", "Tyson Foods Inc"), ("BG", "Bunge Limited"),
+    ("ADM", "Archer-Daniels-Midland Company"), ("CALM", "Cal-Maine Foods Inc"), ("INGR", "Ingredion Incorporated"),
+    ("MKC", "McCormick & Company"), ("LANC", "Lancaster Colony Corporation"), ("JJSF", "J & J Snack Foods Corp"),
+    ("SENEA", "Seneca Foods Corporation"), ("FARM", "Farmer Bros Co"), ("SAM", "Boston Beer Company"),
+    ("TAP", "Molson Coors Beverage Company"), ("BUD", "Anheuser-Busch InBev SA"), ("STZ", "Constellation Brands Inc"),
+    ("CELH", "Celsius Holdings Inc"), ("MNST", "Monster Beverage Corporation"), ("KDP", "Keurig Dr Pepper Inc"),
+    ("COKE", "Coca-Cola Consolidated Inc"), ("FIZZ", "National Beverage Corp"), ("PRMW", "Primo Water Corporation"),
 ]
 
 # Cache
@@ -483,8 +567,6 @@ def get_detailed_analysis(symbol: str):
             news_list = []
             logger.info(f"Attempting to fetch news for {symbol}")
             ticker_news = stock.news
-            logger.info(f"Yahoo Finance news type: {type(ticker_news)}")
-            logger.info(f"Yahoo Finance news content: {ticker_news}")
             
             if ticker_news and len(ticker_news) > 0:
                 logger.info(f"Found {len(ticker_news)} news items from Yahoo Finance")
@@ -527,7 +609,6 @@ def get_detailed_analysis(symbol: str):
                                 pub_time_str = item.get("content", {}).get("pubDate", "")
                                 if pub_time_str:
                                     try:
-                                        from datetime import datetime
                                         pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
                                         pub_time = int(pub_datetime.timestamp())
                                         time_ago = get_time_ago_arabic(pub_time)
@@ -543,32 +624,29 @@ def get_detailed_analysis(symbol: str):
                                     "emoji": sentiments[i].get("emoji", "🟡"),
                                     "time_ago": time_ago
                                 })
-                                
                         logger.info(f"Added {len(news_list)} news items")
                     except Exception as e:
                         logger.error(f"Claude sentiment analysis error: {e}")
                         # إذا فشل تحليل Claude، نضيف بدون تحليل
                         for item in news_items:
-                         # حساب الوقت
-                                pub_time_str = item.get("content", {}).get("pubDate", "")
-                                if pub_time_str:
-                                    try:
-                                        from datetime import datetime
-                                        pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
-                                        pub_time = int(pub_datetime.timestamp())
-                                        time_ago = get_time_ago_arabic(pub_time)
-                                    except:
-                                        time_ago = "غير محدد"
-                                else:
+                            pub_time_str = item.get("content", {}).get("pubDate", "")
+                            if pub_time_str:
+                                try:
+                                    pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
+                                    pub_time = int(pub_datetime.timestamp())
+                                    time_ago = get_time_ago_arabic(pub_time)
+                                except:
                                     time_ago = "غير محدد"
-                                
-                                news_list.append({
-                                    "title": item.get("content", {}).get("title", ""),
-                                    "publisher": item.get("content", {}).get("provider", {}).get("displayName", ""),
-                                    "sentiment": "neutral",
-                                    "emoji": "🟡",
-                                    "time_ago": time_ago
-                                })
+                            else:
+                                time_ago = "غير محدد"
+                            
+                            news_list.append({
+                                "title": item.get("content", {}).get("title", ""),
+                                "publisher": item.get("content", {}).get("provider", {}).get("displayName", ""),
+                                "sentiment": "neutral",
+                                "emoji": "🟡",
+                                "time_ago": time_ago
+                            })
                 else:
                     logger.warning("No news titles or Claude not available")
             else:
@@ -578,6 +656,7 @@ def get_detailed_analysis(symbol: str):
         except Exception as e:
             logger.error(f"Error fetching news: {e}")
             basic_data["news"] = []
+        
         set_cache(cache_key, basic_data)
         return basic_data
         
