@@ -477,7 +477,7 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-        # جلب الأخبار من Alpha Vantage
+   # جلب الأخبار من Alpha Vantage
         try:
             news_list = []
             
@@ -560,13 +560,13 @@ def get_detailed_analysis(symbol: str):
                                         "time_ago": get_time_ago_arabic(timestamp)
                                     })
             
-            basic_data["news"] = news_list
+            basic_data["news"] = news_list  # ← هنا! خارج if
         except Exception as e:
             logger.error(f"Error fetching news from Alpha Vantage: {e}")
             basic_data["news"] = []
-        set_cache(cache_key, basic_data)
-        return basic_data
         
+        set_cache(cache_key, basic_data)
+        return basic_data     
     except HTTPException:
         raise
     except Exception as e:
