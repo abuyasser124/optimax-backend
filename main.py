@@ -524,37 +524,51 @@ def get_detailed_analysis(symbol: str):
                         for i, item in enumerate(news_items):
                             if i < len(sentiments):
                                 # حساب الوقت
-                                pub_time = item.get("providerPublishTime", 0)
-                                if pub_time > 0:
-                                    time_ago = get_time_ago_arabic(pub_time)
+                                pub_time_str = item.get("content", {}).get("pubDate", "")
+                                if pub_time_str:
+                                    try:
+                                        from datetime import datetime
+                                        pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
+                                        pub_time = int(pub_datetime.timestamp())
+                                        time_ago = get_time_ago_arabic(pub_time)
+                                    except:
+                                        time_ago = "غير محدد"
                                 else:
                                     time_ago = "غير محدد"
                                 
                                 news_list.append({
-                                    "title": item.get("title", ""),
-                                    "publisher": item.get("publisher", ""),
+                                    "title": item.get("content", {}).get("title", ""),
+                                    "publisher": item.get("content", {}).get("provider", {}).get("displayName", ""),
                                     "sentiment": sentiments[i].get("sentiment", "neutral"),
                                     "emoji": sentiments[i].get("emoji", "🟡"),
                                     "time_ago": time_ago
                                 })
+                                
                         logger.info(f"Added {len(news_list)} news items")
                     except Exception as e:
                         logger.error(f"Claude sentiment analysis error: {e}")
                         # إذا فشل تحليل Claude، نضيف بدون تحليل
                         for item in news_items:
-                            pub_time = item.get("providerPublishTime", 0)
-                            if pub_time > 0:
-                                time_ago = get_time_ago_arabic(pub_time)
-                            else:
-                                time_ago = "غير محدد"
-                            
-                            news_list.append({
-                                "title": item.get("title", ""),
-                                "publisher": item.get("publisher", ""),
-                                "sentiment": "neutral",
-                                "emoji": "🟡",
-                                "time_ago": time_ago
-                            })
+                         # حساب الوقت
+                                pub_time_str = item.get("content", {}).get("pubDate", "")
+                                if pub_time_str:
+                                    try:
+                                        from datetime import datetime
+                                        pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
+                                        pub_time = int(pub_datetime.timestamp())
+                                        time_ago = get_time_ago_arabic(pub_time)
+                                    except:
+                                        time_ago = "غير محدد"
+                                else:
+                                    time_ago = "غير محدد"
+                                
+                                news_list.append({
+                                    "title": item.get("content", {}).get("title", ""),
+                                    "publisher": item.get("content", {}).get("provider", {}).get("displayName", ""),
+                                    "sentiment": "neutral",
+                                    "emoji": "🟡",
+                                    "time_ago": time_ago
+                                })
                 else:
                     logger.warning("No news titles or Claude not available")
             else:
