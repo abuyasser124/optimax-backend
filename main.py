@@ -478,32 +478,21 @@ def get_detailed_analysis(symbol: str):
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-        # جلب الأخبار من Alpha Vantage
+        # جلب الأخبار من Yahoo Finance
         try:
             news_list = []
+            ticker_news = stock.news
             
-            if ALPHA_VANTAGE_API_KEY:
-                logger.info(f"Fetching news for {symbol} from Alpha Vantage...")
+            if ticker_news and len(ticker_news) > 0:
+                logger.info(f"Found {len(ticker_news)} news items from Yahoo Finance")
                 
-                news_url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&apikey={ALPHA_VANTAGE_API_KEY}&limit=3"
-                logger.info(f"News URL: {news_url}")
+                # أخذ أول 3 أخبار
+                news_items = ticker_news[:3]
+                news_titles = [item.get("title", "") for item in news_items if item.get("title")]
                 
-                news_response = requests.get(news_url, timeout=10)
-                logger.info(f"News response status: {news_response.status_code}")
-                
-                if news_response.status_code == 200:
-                    news_data = news_response.json()
-                    logger.info(f"Alpha Vantage response keys: {news_data.keys()}")
-                    
-                    if "feed" in news_data and len(news_data["feed"]) > 0:
-                        logger.info(f"Found {len(news_data['feed'])} news items")
-                        # أخذ أول 3 أخبار
-                        news_items = news_data["feed"][:3]
-                        news_titles = [item.get("title", "") for item in news_items]
-                        
-                        if news_titles and claude_client:
-                            # تحليل الأخبار بـ Claude
-                            news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
+                if news_titles and claude_client:
+                    # تحليل الأخبار بـ Claude
+                    news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
 
 {chr(10).join([f"{i+1}. {title}" for i, title in enumerate(news_titles)])}
 
@@ -512,74 +501,66 @@ def get_detailed_analysis(symbol: str):
   {{"sentiment": "positive/negative/neutral", "emoji": "🟢/🔴/🟡"}},
   ...
 ]"""
+                    
+                    try:
+                        sentiment_response = claude_client.messages.create(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=300,
+                            messages=[{"role": "user", "content": news_prompt}]
+                        )
+                        
+                        sentiment_text = sentiment_response.content[0].text.strip()
+                        if "```json" in sentiment_text:
+                            sentiment_text = sentiment_text.split("```json")[1].split("```")[0].strip()
+                        elif "```" in sentiment_text:
+                            sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
+                        
+                        sentiments = json.loads(sentiment_text)
+                        logger.info(f"Claude analyzed {len(sentiments)} news items")
+                        
+                        for i, item in enumerate(news_items):
+                            if i < len(sentiments):
+                                # حساب الوقت
+                                pub_time = item.get("providerPublishTime", 0)
+                                if pub_time > 0:
+                                    time_ago = get_time_ago_arabic(pub_time)
+                                else:
+                                    time_ago = "غير محدد"
+                                
+                                news_list.append({
+                                    "title": item.get("title", ""),
+                                    "publisher": item.get("publisher", ""),
+                                    "sentiment": sentiments[i].get("sentiment", "neutral"),
+                                    "emoji": sentiments[i].get("emoji", "🟡"),
+                                    "time_ago": time_ago
+                                })
+                        logger.info(f"Added {len(news_list)} news items")
+                    except Exception as e:
+                        logger.error(f"Claude sentiment analysis error: {e}")
+                        # إذا فشل تحليل Claude، نضيف بدون تحليل
+                        for item in news_items:
+                            pub_time = item.get("providerPublishTime", 0)
+                            if pub_time > 0:
+                                time_ago = get_time_ago_arabic(pub_time)
+                            else:
+                                time_ago = "غير محدد"
                             
-                            try:
-                                sentiment_response = claude_client.messages.create(
-                                    model="claude-sonnet-4-20250514",
-                                    max_tokens=300,
-                                    messages=[{"role": "user", "content": news_prompt}]
-                                )
-                                
-                                sentiment_text = sentiment_response.content[0].text.strip()
-                                if "```json" in sentiment_text:
-                                    sentiment_text = sentiment_text.split("```json")[1].split("```")[0].strip()
-                                elif "```" in sentiment_text:
-                                    sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
-                                
-                                sentiments = json.loads(sentiment_text)
-                                
-                                for i, item in enumerate(news_items):
-                                    if i < len(sentiments):
-                                        # تحويل timestamp
-                                        time_str = item.get("time_published", "")
-                                        try:
-                                            news_datetime = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
-                                            timestamp = int(news_datetime.timestamp())
-                                        except:
-                                            timestamp = 0
-                                        
-                                        news_list.append({
-                                            "title": item.get("title", ""),
-                                            "publisher": item.get("source", ""),
-                                            "link": item.get("url", ""),
-                                            "sentiment": sentiments[i].get("sentiment", "neutral"),
-                                            "emoji": sentiments[i].get("emoji", "🟡"),
-                                            "time_ago": get_time_ago_arabic(timestamp)
-                                        })
-                                logger.info(f"Added {len(news_list)} news items with Claude sentiment")
-                            except Exception as e:
-                                logger.error(f"Claude sentiment analysis error: {e}")
-                                # إذا فشل تحليل Claude، نضيف بدون تحليل
-                                for item in news_items:
-                                    time_str = item.get("time_published", "")
-                                    try:
-                                        news_datetime = datetime.strptime(time_str, "%Y%m%dT%H%M%S")
-                                        timestamp = int(news_datetime.timestamp())
-                                    except:
-                                        timestamp = 0
-                                    
-                                    news_list.append({
-                                        "title": item.get("title", ""),
-                                        "publisher": item.get("source", ""),
-                                        "link": item.get("url", ""),
-                                        "sentiment": "neutral",
-                                        "emoji": "🟡",
-                                        "time_ago": get_time_ago_arabic(timestamp)
-                                    })
-                                logger.info(f"Added {len(news_list)} news items without sentiment")
-                    else:
-                        logger.warning(f"No feed in Alpha Vantage response for {symbol}")
+                            news_list.append({
+                                "title": item.get("title", ""),
+                                "publisher": item.get("publisher", ""),
+                                "sentiment": "neutral",
+                                "emoji": "🟡",
+                                "time_ago": time_ago
+                            })
                 else:
-                    logger.error(f"Alpha Vantage returned status {news_response.status_code}")
+                    logger.warning("No news titles or Claude not available")
             else:
-                logger.warning("ALPHA_VANTAGE_API_KEY not configured")
+                logger.warning(f"No news from Yahoo Finance for {symbol}")
             
             basic_data["news"] = news_list
-            logger.info(f"Final news list has {len(news_list)} items")
         except Exception as e:
-            logger.error(f"Error fetching news from Alpha Vantage: {e}")
+            logger.error(f"Error fetching news: {e}")
             basic_data["news"] = []
-        
         set_cache(cache_key, basic_data)
         return basic_data
         
