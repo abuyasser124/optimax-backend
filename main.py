@@ -491,7 +491,7 @@ def get_detailed_analysis(symbol: str):
                 
                 # أخذ أول 3 أخبار
                 news_items = ticker_news[:3]
-                news_titles = [item.get("title", "") for item in news_items if item.get("title")]
+                news_titles = [item.get("content", {}).get("title", "") for item in news_items if item.get("content", {}).get("title")]
                 
                 if news_titles and claude_client:
                     # تحليل الأخبار بـ Claude
