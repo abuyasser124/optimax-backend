@@ -44,7 +44,7 @@ def get_time_ago_arabic(timestamp):
     except:
         return "غير محدد"
 
-app = FastAPI(title="OptiMax API", version="2.0.0")
+app = FastAPI(title="OptiMax API", version="3.0.0")
 
 # CORS
 app.add_middleware(
@@ -155,9 +155,9 @@ SHARIAH_STOCKS = [
     ("SQM", "Sociedad Quimica y Minera"), ("LAC", "Lithium Americas Corp"), ("LTHM", "Livent Corporation"),
     ("MP", "MP Materials Corp"), ("NOVR", "Nova Royalty Corp"), ("BEAM", "Beam Global"),
     ("WOLF", "Wolfspeed Inc"), ("OLED", "Universal Display Corporation"), ("POWI", "Power Integrations"),
-    ("VICR", "Vicor Corporation"), ("ON", "ON Semiconductor"), ("NXPI", "NXP Semiconductors"),
-    ("SLDP", "Solid Power Inc"), ("STEM", "Stem Inc"), ("FLNC", "Fluence Energy Inc"),
-    ("BE", "Bloom Energy Corporation"), ("FCEL", "FuelCell Energy Inc"), ("BLDP", "Ballard Power Systems"),
+    ("VICR", "Vicor Corporation"), ("SLDP", "Solid Power Inc"), ("STEM", "Stem Inc"), 
+    ("FLNC", "Fluence Energy Inc"), ("BE", "Bloom Energy Corporation"), ("FCEL", "FuelCell Energy Inc"), 
+    ("BLDP", "Ballard Power Systems"),
     
     # Industrial & Manufacturing (50 stocks)
     ("CAT", "Caterpillar Inc"), ("DE", "Deere & Company"), ("ETN", "Eaton Corporation"),
@@ -167,7 +167,7 @@ SHARIAH_STOCKS = [
     ("ITW", "Illinois Tool Works"), ("ROK", "Rockwell Automation"), ("PH", "Parker-Hannifin Corporation"),
     ("IR", "Ingersoll Rand Inc"), ("CARR", "Carrier Global Corporation"), ("OTIS", "Otis Worldwide Corporation"),
     ("TT", "Trane Technologies plc"), ("JCI", "Johnson Controls International"), ("AME", "AMETEK Inc"),
-    ("ROP", "Roper Technologies Inc"), ("FTV", "Fortive Corporation"), ("GNRC", "Generac Holdings Inc"),
+    ("ROP", "Roper Technologies Inc"), ("FTV", "Fortive Corporation"), 
     ("WSO", "Watsco Inc"), ("FAST", "Fastenal Company"), ("WM", "Waste Management Inc"),
     ("RSG", "Republic Services Inc"), ("WCN", "Waste Connections Inc"), ("SRCL", "Stericycle Inc"),
     ("GFL", "GFL Environmental Inc"), ("RYN", "Rayonier Inc"), ("WY", "Weyerhaeuser Company"),
@@ -203,7 +203,7 @@ SHARIAH_STOCKS = [
 # Cache
 _cache = {}
 _cache_time = {}
-CACHE_DURATION = 600  # 10 minutes
+CACHE_DURATION = 600
 
 def get_cache(key):
     if key in _cache:
@@ -216,25 +216,18 @@ def set_cache(key, value):
     _cache_time[key] = datetime.now().timestamp()
 
 def is_market_open():
-    """فحص إذا السوق مفتوح"""
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
-    
-    # تحقق من يوم الأسبوع (الاثنين=0، الأحد=6)
-    if now_et.weekday() >= 5:  # السبت أو الأحد
+    if now_et.weekday() >= 5:
         return False
-    
-    # تحقق من ساعات التداول
     market_open = now_et.replace(hour=9, minute=30, second=0, microsecond=0)
     market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
-    
     return market_open <= now_et <= market_close
-
-@app.get("/")
+    @app.get("/")
 def root():
     return {
         "app": "OptiMax API",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "endpoints": {
             "top_opportunities": "/top-opportunities",
             "stock_analysis": "/analysis/{symbol}",
@@ -242,11 +235,11 @@ def root():
         },
         "total_stocks": len(SHARIAH_STOCKS),
         "market_open": is_market_open(),
-        "message": "Advanced Shariah-compliant stock analysis powered by Claude AI"
+        "message": "Advanced Shariah-compliant stock analysis with 10 technical indicators powered by Claude AI"
     }
 
 def calculate_indicators(df):
-    """حساب المؤشرات الفنية"""
+    """حساب المؤشرات الفنية المتقدمة"""
     try:
         # RSI
         delta = df['Close'].diff()
@@ -268,75 +261,162 @@ def calculate_indicators(df):
         df['BB_upper'] = df['SMA_20'] + (df['BB_std'] * 2)
         df['BB_lower'] = df['SMA_20'] - (df['BB_std'] * 2)
         
-        # SMA 50
+        # SMA 50 و 200
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
+        df['SMA_200'] = df['Close'].rolling(window=200).mean()
         
         # Volume
         df['Volume_SMA'] = df['Volume'].rolling(window=20).mean()
+        
+        # Money Flow Index (MFI)
+        typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+        money_flow = typical_price * df['Volume']
+        
+        positive_flow = money_flow.where(typical_price > typical_price.shift(1), 0).rolling(window=14).sum()
+        negative_flow = money_flow.where(typical_price < typical_price.shift(1), 0).rolling(window=14).sum()
+        
+        mfi_ratio = positive_flow / negative_flow
+        df['MFI'] = 100 - (100 / (1 + mfi_ratio))
+        df['MFI_Change'] = df['MFI'].diff()
+        
+        # ADX
+        high_diff = df['High'].diff()
+        low_diff = -df['Low'].diff()
+        
+        pos_dm = high_diff.where((high_diff > low_diff) & (high_diff > 0), 0)
+        neg_dm = low_diff.where((low_diff > high_diff) & (low_diff > 0), 0)
+        
+        tr1 = df['High'] - df['Low']
+        tr2 = abs(df['High'] - df['Close'].shift())
+        tr3 = abs(df['Low'] - df['Close'].shift())
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        
+        atr = tr.rolling(window=14).mean()
+        pos_di = 100 * (pos_dm.rolling(window=14).mean() / atr)
+        neg_di = 100 * (neg_dm.rolling(window=14).mean() / atr)
+        
+        dx = 100 * abs(pos_di - neg_di) / (pos_di + neg_di)
+        df['ADX'] = dx.rolling(window=14).mean()
+        
+        # ATR
+        df['ATR'] = atr
+        
+        # ROC
+        df['ROC'] = ((df['Close'] - df['Close'].shift(10)) / df['Close'].shift(10)) * 100
         
         return df
     except Exception as e:
         logger.error(f"Error calculating indicators: {e}")
         return df
 
-def calculate_score(row, current_price):
+def calculate_score(row, current_price, prev_close, df):
     """حساب نقاط السهم من 0-10"""
     score = 0.0
+    signals = []
     
     try:
-        # RSI - Oversold (0-3 points)
-        if row['RSI'] < 30:
-            score += 3.0
-        elif row['RSI'] < 40:
-            score += 1.5
-        elif row['RSI'] < 50:
-            score += 0.5
-            
-        # MACD Bullish (0-3 points)
-        if row['MACD'] > row['MACD_Signal']:
-            if row['MACD_Hist'] > 0:
-                score += 3.0
+        # 1. SMA-200 Filter (2 نقطة)
+        if not pd.isna(row['SMA_200']):
+            if current_price > row['SMA_200']:
+                score += 2.0
+                signals.append("فوق SMA-200 (اتجاه صاعد)")
             else:
-                score += 1.5
-                
-        # Near Bollinger Lower (0-2 points)
-        if current_price < row['BB_lower'] * 1.02:
-            score += 2.0
-        elif current_price < row['BB_lower'] * 1.05:
-            score += 1.0
-            
-        # Price above SMA-20 (0-1 point)
-        if current_price > row['SMA_20']:
-            score += 1.0
-            
-        # Volume surge (0-1 point)
-        if row['Volume'] > row['Volume_SMA'] * 5:
-            score += 1.0
-        elif row['Volume'] > row['Volume_SMA'] * 3:
-            score += 0.5
-            
-    except:
-        pass
+                signals.append("تحت SMA-200 (حذر)")
         
-    return min(score, 10.0)  # Cap at 10
+        # 2. RSI + Volume (2 نقطة)
+        volume_ratio = row['Volume'] / row['Volume_SMA'] if row['Volume_SMA'] > 0 else 1
+        
+        if row['RSI'] < 30:
+            if volume_ratio < 2:
+                score += 2.0
+                signals.append("RSI تشبع بيعي + حجم معتدل (فرصة)")
+            else:
+                score += 0.5
+                signals.append("RSI منخفض + حجم ضخم (هروب محتمل)")
+        elif row['RSI'] < 40:
+            score += 1.0
+            signals.append("RSI تشبع بيعي")
+        elif row['RSI'] > 70:
+            score -= 0.5
+            signals.append("RSI تشبع شرائي")
+        
+        # 3. MACD Crossover (2 نقطة)
+        if row['MACD'] > row['MACD_Signal']:
+            if row['MACD_Hist'] > 0 and row['MACD_Hist'] > df['MACD_Hist'].iloc[-2]:
+                score += 2.0
+                signals.append("MACD تقاطع صاعد قوي")
+            else:
+                score += 1.0
+                signals.append("MACD إيجابي")
+        
+        # 4. Bollinger Bands (1 نقطة)
+        if current_price < row['BB_lower'] * 1.02:
+            score += 1.0
+            signals.append("قرب حد بولينجر السفلي")
+        
+        # 5. MFI (1 نقطة)
+        if not pd.isna(row['MFI']):
+            if row['MFI'] < 30:
+                score += 1.0
+                signals.append("MFI تشبع بيعي")
+            elif row['MFI'] > 70:
+                score -= 0.5
+                signals.append("MFI تشبع شرائي")
+        
+        # 6. ADX (1 نقطة)
+        if not pd.isna(row['ADX']):
+            if row['ADX'] > 25:
+                score += 1.0
+                signals.append(f"ADX قوي ({row['ADX']:.1f})")
+            elif row['ADX'] < 20:
+                signals.append("ADX ضعيف (سوق جانبي)")
+        
+        # 7. ROC (1 نقطة)
+        if not pd.isna(row['ROC']):
+            if row['ROC'] > 5:
+                score += 0.5
+                signals.append("زخم إيجابي قوي")
+            elif row['ROC'] > 2:
+                score += 0.3
+                signals.append("زخم إيجابي")
+        
+        # 8. Gap Analysis
+        gap_pct = ((current_price - prev_close) / prev_close) * 100
+        if abs(gap_pct) > 3:
+            if gap_pct < -3 and volume_ratio > 2:
+                score -= 1.0
+                signals.append(f"فجوة هابطة ({gap_pct:.1f}%) + حجم عالي")
+            elif gap_pct > 3 and volume_ratio > 1.5:
+                score += 0.5
+                signals.append(f"فجوة صاعدة ({gap_pct:.1f}%) + حجم")
+        
+        # 9. بونص MFI + ADX (2 نقطة)
+        if not pd.isna(row['MFI']) and not pd.isna(row['ADX']) and not pd.isna(row['MFI_Change']):
+            if row['MFI_Change'] > 0 and row['ADX'] > 25:
+                score += 2.0
+                signals.append("⚡ MFI صاعد + ADX قوي (زخم استثنائي)")
+        
+    except Exception as e:
+        logger.error(f"Error in calculate_score: {e}")
+    
+    return min(max(score, 0), 10.0), signals
 
 def get_signal(score):
-    """تحديد الإشارة"""
-    if score >= 8:
+    if score >= 9:
+        return "Super Strong Buy"
+    elif score >= 7:
         return "Strong Buy"
-    elif score >= 6:
+    elif score >= 5:
         return "Buy"
-    elif score >= 4:
+    elif score >= 3:
         return "Hold"
-    elif score >= 2:
+    elif score >= 1:
         return "Sell"
     else:
         return "Strong Sell"
 
 @app.get("/top-opportunities")
 def get_top_opportunities():
-    """الحصول على أفضل 20 فرصة بعد تحليل Claude AI"""
-    
     cache_key = "top_opportunities"
     cached = get_cache(cache_key)
     if cached:
@@ -344,7 +424,12 @@ def get_top_opportunities():
     
     logger.info(f"Starting analysis of {len(SHARIAH_STOCKS)} stocks...")
     
-    # المرحلة 1: التحليل الفني لكل الأسهم
+    try:
+        sp500 = yf.download("^GSPC", period="6mo", interval="1d", progress=False)
+        sp500_return = ((sp500['Close'].iloc[-1] - sp500['Close'].iloc[-30]) / sp500['Close'].iloc[-30]) * 100
+    except:
+        sp500_return = 0
+    
     all_scores = []
     symbols = [s[0] for s in SHARIAH_STOCKS]
     
@@ -358,61 +443,56 @@ def get_top_opportunities():
                 else:
                     stock_data = data.copy()
                 
-                if stock_data.empty or len(stock_data) < 50:
+                if stock_data.empty or len(stock_data) < 200:
                     continue
                 
                 stock_data = calculate_indicators(stock_data)
                 latest = stock_data.iloc[-1]
+                prev_close = stock_data.iloc[-2]['Close']
                 current_price = latest['Close']
                 
-                score = calculate_score(latest, current_price)
+                score, signals = calculate_score(latest, current_price, prev_close, stock_data)
+                
+                stock_return = ((current_price - stock_data.iloc[-30]['Close']) / stock_data.iloc[-30]['Close']) * 100
+                relative_strength = stock_return - sp500_return
                 
                 all_scores.append({
                     "symbol": symbol,
                     "name": name,
                     "price": round(float(current_price), 2),
-                    "change_pct": round(((current_price - stock_data.iloc[-2]['Close']) / stock_data.iloc[-2]['Close']) * 100, 2),
+                    "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2),
                     "score": round(score, 1),
                     "signal": get_signal(score),
                     "rsi": round(float(latest['RSI']), 1) if not pd.isna(latest['RSI']) else None,
                     "macd": round(float(latest['MACD']), 2) if not pd.isna(latest['MACD']) else None,
+                    "relative_strength": round(relative_strength, 2),
                 })
                 
             except Exception as e:
                 logger.error(f"Error analyzing {symbol}: {e}")
                 continue
         
-        # ترتيب وأخذ أفضل 50
         all_scores.sort(key=lambda x: x['score'], reverse=True)
         top_50 = all_scores[:50]
         
-        logger.info(f"Top 50 stocks selected. Sending to Claude AI for final analysis...")
+        logger.info(f"Top 50 selected. Sending to Claude AI...")
         
-        # المرحلة 2: تحليل Claude للـ 50 الأفضل
         final_top_20 = []
         
         if claude_client:
             try:
-                # إعداد البيانات لـ Claude
                 stocks_summary = "\n".join([
-                    f"{i+1}. {s['symbol']} ({s['name']}) - Score: {s['score']}/10, Price: ${s['price']}, RSI: {s['rsi']}, Signal: {s['signal']}"
+                    f"{i+1}. {s['symbol']} - Score: {s['score']}/10, RS: {s['relative_strength']}%"
                     for i, s in enumerate(top_50)
                 ])
                 
-                prompt = f"""أنت محلل أسهم خبير متخصص في الأسهم الشرعية الأمريكية.
-
-لديك قائمة بأفضل 50 سهم شرعي بناءً على التحليل الفني:
+                prompt = f"""أنت محلل أسهم خبير. اختر أفضل 20 سهم من القائمة:
 
 {stocks_summary}
 
-مهمتك:
-1. اختر أفضل 20 سهم من القائمة للتداول القصير والمتوسط المدى
-2. رتبهم حسب قوة الفرصة (الأقوى أولاً)
-3. أرجع فقط رموز الأسهم (Symbols) مفصولة بفاصلة
+RS = Relative Strength مقابل S&P 500
 
-مثال للرد: AAPL,NVDA,MSFT,TSLA,...
-
-الرد (فقط رموز الأسهم):"""
+أرجع فقط رموز الأسهم مفصولة بفاصلة:"""
 
                 message = claude_client.messages.create(
                     model="claude-sonnet-4-20250514",
@@ -423,40 +503,34 @@ def get_top_opportunities():
                 selected_symbols = message.content[0].text.strip().split(',')
                 selected_symbols = [s.strip() for s in selected_symbols][:20]
                 
-                # ترتيب حسب اختيار Claude
                 for symbol in selected_symbols:
                     stock = next((s for s in top_50 if s['symbol'] == symbol), None)
                     if stock:
                         final_top_20.append(stock)
                 
-                logger.info(f"Claude AI selected {len(final_top_20)} stocks")
-                
             except Exception as e:
-                logger.error(f"Claude AI error: {e}")
+                logger.error(f"Claude error: {e}")
                 final_top_20 = top_50[:20]
         else:
-            logger.warning("Claude API not configured, using top 20 from technical analysis")
             final_top_20 = top_50[:20]
         
         result = {
             "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(),
             "market_open": is_market_open(),
             "total_analyzed": len(all_scores),
+            "sp500_performance": round(sp500_return, 2),
             "top_opportunities": final_top_20,
-            "analysis_method": "Claude AI" if claude_client and final_top_20 else "Technical Only"
+            "analysis_method": "Advanced 10-Indicator Analysis + Claude AI"
         }
         
         set_cache(cache_key, result)
         return result
         
     except Exception as e:
-        logger.error(f"Error in get_top_opportunities: {e}")
+        logger.error(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/analysis/{symbol}")
+        app.get("/analysis/{symbol}")
 def get_detailed_analysis(symbol: str):
-    """تحليل مفصل لسهم معين باستخدام Claude AI"""
-    
     symbol = symbol.upper()
     cache_key = f"analysis_{symbol}"
     cached = get_cache(cache_key)
@@ -468,7 +542,6 @@ def get_detailed_analysis(symbol: str):
         raise HTTPException(status_code=404, detail="Stock not in Shariah-compliant list")
     
     try:
-        # جلب البيانات
         stock = yf.Ticker(symbol)
         df = stock.history(period="6mo")
         
@@ -477,66 +550,77 @@ def get_detailed_analysis(symbol: str):
         
         df = calculate_indicators(df)
         latest = df.iloc[-1]
+        prev_close = df.iloc[-2]['Close']
         current_price = latest['Close']
         
-        score = calculate_score(latest, current_price)
+        score, signals = calculate_score(latest, current_price, prev_close, df)
         signal = get_signal(score)
         
-        # البيانات الأساسية
+        atr_value = latest['ATR']
+        dynamic_stop = current_price - (2 * atr_value)
+        
         basic_data = {
             "symbol": symbol,
             "name": stock_info[1],
             "price": round(float(current_price), 2),
-            "change_pct": round(((current_price - df.iloc[-2]['Close']) / df.iloc[-2]['Close']) * 100, 2),
+            "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2),
             "score": round(score, 1),
             "signal": signal,
+            "signals_detail": signals,
             "indicators": {
                 "rsi": round(float(latest['RSI']), 2),
                 "macd": round(float(latest['MACD']), 4),
                 "macd_signal": round(float(latest['MACD_Signal']), 4),
+                "macd_histogram": round(float(latest['MACD_Hist']), 4),
                 "sma_20": round(float(latest['SMA_20']), 2),
                 "sma_50": round(float(latest['SMA_50']), 2),
+                "sma_200": round(float(latest['SMA_200']), 2) if not pd.isna(latest['SMA_200']) else None,
                 "bb_upper": round(float(latest['BB_upper']), 2),
                 "bb_lower": round(float(latest['BB_lower']), 2),
-            }
+                "mfi": round(float(latest['MFI']), 2) if not pd.isna(latest['MFI']) else None,
+                "adx": round(float(latest['ADX']), 2) if not pd.isna(latest['ADX']) else None,
+                "atr": round(float(latest['ATR']), 2),
+                "roc": round(float(latest['ROC']), 2) if not pd.isna(latest['ROC']) else None,
+            },
+            "dynamic_stop_loss": round(float(dynamic_stop), 2),
         }
         
-        # تحليل Claude AI
+        # Claude AI Analysis
         if claude_client:
             try:
-                prompt = f"""أنت محلل أسهم خبير. قدم تحليلاً مفصلاً للسهم التالي:
-
-الشركة: {stock_info[1]} ({symbol})
-السعر الحالي: ${current_price:.2f}
-التغير: {basic_data['change_pct']}%
-
-المؤشرات الفنية:
+                indicators_text = f"""المؤشرات:
 - RSI: {basic_data['indicators']['rsi']}
 - MACD: {basic_data['indicators']['macd']}
-- SMA 20: ${basic_data['indicators']['sma_20']}
-- SMA 50: ${basic_data['indicators']['sma_50']}
-- Bollinger Upper: ${basic_data['indicators']['bb_upper']}
-- Bollinger Lower: ${basic_data['indicators']['bb_lower']}
+- SMA 200: ${basic_data['indicators']['sma_200'] if basic_data['indicators']['sma_200'] else 'N/A'}
+- MFI: {basic_data['indicators']['mfi'] if basic_data['indicators']['mfi'] else 'N/A'}
+- ADX: {basic_data['indicators']['adx'] if basic_data['indicators']['adx'] else 'N/A'}
+- ROC: {basic_data['indicators']['roc'] if basic_data['indicators']['roc'] else 'N/A'}%
 
-قدم تحليلاً يتضمن:
-1. نقطة الدخول المثالية (رقم محدد)
-2. الهدف الأول (قصير المدى 1-3 أيام) - رقم محدد
-3. الهدف الثاني (متوسط المدى أسبوع-أسبوعين) - رقم محدد
-4. وقف الخسارة (رقم محدد)
-5. نسبة النجاح المتوقعة (%)
-6. تاريخ صلاحية التحليل - التاريخ الحالي هو {datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d')}، أعط تاريخ صلاحية بعد 1-3 أيام بصيغة YYYY-MM-DD
-7. تحليل مختصر (3-4 أسطر)
+إشارات: {chr(10).join(['- ' + s for s in signals])}
 
-أرجع الرد بصيغة JSON:
+وقف الخسارة الديناميكي: ${basic_data['dynamic_stop_loss']}"""
+
+                prompt = f"""أنت محلل أسهم خبير.
+
+{stock_info[1]} ({symbol})
+السعر: ${current_price:.2f}
+النقاط: {basic_data['score']}/10
+الإشارة: {signal}
+
+{indicators_text}
+
+قدم تحليلاً بصيغة JSON:
 {{
   "entry_point": 000.00,
   "target_short": 000.00,
   "target_medium": 000.00,
-  "stop_loss": 000.00,
+  "stop_loss": {basic_data['dynamic_stop_loss']},
   "success_rate": 00,
   "valid_until": "YYYY-MM-DD",
-  "analysis": "النص"
-}}"""
+  "analysis": "تحليل مختصر 3-4 أسطر"
+}}
+
+التاريخ الحالي: {datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d')}"""
 
                 message = claude_client.messages.create(
                     model="claude-sonnet-4-20250514",
@@ -545,7 +629,6 @@ def get_detailed_analysis(symbol: str):
                 )
                 
                 claude_response = message.content[0].text.strip()
-                # استخراج JSON من الرد
                 if "```json" in claude_response:
                     claude_response = claude_response.split("```json")[1].split("```")[0].strip()
                 elif "```" in claude_response:
@@ -555,29 +638,24 @@ def get_detailed_analysis(symbol: str):
                 basic_data["claude_analysis"] = claude_analysis
                 
             except Exception as e:
-                logger.error(f"Claude analysis error: {e}")
+                logger.error(f"Claude error: {e}")
                 basic_data["claude_analysis"] = None
         else:
             basic_data["claude_analysis"] = None
         
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
         
-        # جلب الأخبار من Yahoo Finance
+        # جلب الأخبار
         try:
             news_list = []
-            logger.info(f"Attempting to fetch news for {symbol}")
             ticker_news = stock.news
             
             if ticker_news and len(ticker_news) > 0:
-                logger.info(f"Found {len(ticker_news)} news items from Yahoo Finance")
-                
-                # أخذ أول 3 أخبار
                 news_items = ticker_news[:3]
                 news_titles = [item.get("content", {}).get("title", "") for item in news_items if item.get("content", {}).get("title")]
                 
                 if news_titles and claude_client:
-                    # تحليل الأخبار بـ Claude
-                    news_prompt = f"""حلل هذه الأخبار عن شركة {stock_info[1]} وصنفها (إيجابي/سلبي/محايد):
+                    news_prompt = f"""حلل هذه الأخبار عن {stock_info[1]} وصنفها:
 
 {chr(10).join([f"{i+1}. {title}" for i, title in enumerate(news_titles)])}
 
@@ -601,11 +679,9 @@ def get_detailed_analysis(symbol: str):
                             sentiment_text = sentiment_text.split("```")[1].split("```")[0].strip()
                         
                         sentiments = json.loads(sentiment_text)
-                        logger.info(f"Claude analyzed {len(sentiments)} news items")
                         
                         for i, item in enumerate(news_items):
                             if i < len(sentiments):
-                                # حساب الوقت
                                 pub_time_str = item.get("content", {}).get("pubDate", "")
                                 if pub_time_str:
                                     try:
@@ -624,10 +700,8 @@ def get_detailed_analysis(symbol: str):
                                     "emoji": sentiments[i].get("emoji", "🟡"),
                                     "time_ago": time_ago
                                 })
-                        logger.info(f"Added {len(news_list)} news items")
                     except Exception as e:
-                        logger.error(f"Claude sentiment analysis error: {e}")
-                        # إذا فشل تحليل Claude، نضيف بدون تحليل
+                        logger.error(f"Sentiment error: {e}")
                         for item in news_items:
                             pub_time_str = item.get("content", {}).get("pubDate", "")
                             if pub_time_str:
@@ -647,14 +721,10 @@ def get_detailed_analysis(symbol: str):
                                 "emoji": "🟡",
                                 "time_ago": time_ago
                             })
-                else:
-                    logger.warning("No news titles or Claude not available")
-            else:
-                logger.warning(f"No news from Yahoo Finance for {symbol}")
             
             basic_data["news"] = news_list
         except Exception as e:
-            logger.error(f"Error fetching news: {e}")
+            logger.error(f"News error: {e}")
             basic_data["news"] = []
         
         set_cache(cache_key, basic_data)
@@ -668,7 +738,6 @@ def get_detailed_analysis(symbol: str):
 
 @app.get("/market-status")
 def market_status():
-    """حالة السوق والنظام"""
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
     
@@ -678,7 +747,20 @@ def market_status():
         "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)",
         "total_stocks": len(SHARIAH_STOCKS),
         "cache_duration": f"{CACHE_DURATION} seconds",
-        "claude_enabled": claude_client is not None
+        "claude_enabled": claude_client is not None,
+        "analysis_version": "3.0.0 - Advanced 10-Indicator Analysis",
+        "indicators": [
+            "SMA-200 Filter",
+            "RSI + Volume",
+            "MACD Crossover",
+            "Bollinger Bands",
+            "Money Flow Index (MFI)",
+            "ADX (Trend Strength)",
+            "ATR (Dynamic Stops)",
+            "Rate of Change (ROC)",
+            "Gap Analysis",
+            "Relative Strength vs S&P 500"
+        ]
     }
 
 if __name__ == "__main__":
