@@ -213,7 +213,7 @@ def get_stock_data_fmp(symbol, days=180):
         logger.error(f"FMP error {symbol}: {e}")
         return None
 
-  @app.get("/")
+@app.get("/")
 def root():
     return {
         "app": "OptiMax API",
