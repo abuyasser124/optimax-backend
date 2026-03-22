@@ -420,9 +420,25 @@ def get_top_opportunities():
     
     try:
         logger.info("Attempting Yahoo Finance download...")
-        data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
-        logger.info(f"Yahoo download completed")
-        yahoo_success = True
+        try:
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Yahoo download timeout")
+            
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)  # 60 ثانية timeout
+            
+            data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
+            
+            signal.alarm(0)  # إلغاء timeout
+            logger.info(f"Yahoo download completed")
+            yahoo_success = True
+            
+        except (TimeoutError, Exception) as e:
+            logger.error(f"Yahoo Finance failed: {e}")
+            yahoo_success = False
+            data = {}
     except Exception as e:
         logger.error(f"Yahoo Finance failed: {e}")
         yahoo_success = False
