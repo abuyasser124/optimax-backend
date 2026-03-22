@@ -429,8 +429,6 @@ def get_top_opportunities():
                     continue
                     
                 stock_data = data[symbol].copy()
-                else:
-                    stock_data = data.copy()
                 
                 if stock_data.empty or len(stock_data) < 200:
                     continue
