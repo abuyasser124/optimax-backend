@@ -384,11 +384,8 @@ def get_top_opportunities():
     
     logger.info(f"Starting analysis of {len(SHARIAH_STOCKS)} stocks...")
     
-    try:
-        sp500 = yf.download("^GSPC", period="6mo", interval="1d", progress=False)
-        sp500_return = ((sp500['Close'].iloc[-1] - sp500['Close'].iloc[-30]) / sp500['Close'].iloc[-30]) * 100
-    except:
-        sp500_return = 0
+    # تجاهل S&P 500 لتجنب Rate Limit
+    sp500_return = 0
     
     all_scores = []
     symbols = [s[0] for s in SHARIAH_STOCKS]
