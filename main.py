@@ -413,9 +413,10 @@ def get_top_opportunities():
                         if sym in batch_data:
                             all_data[sym] = batch_data[sym]
                 
-                    # انتظار 5 ثوانٍ بين كل دفعة
+                # انتظار 5 ثوانٍ بين كل دفعة
                 if i + batch_size < len(symbols):
                     time.sleep(5)
+                    
             except Exception as e:
                 logger.error(f"Error downloading batch: {e}")
                 continue
