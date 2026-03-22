@@ -15,6 +15,7 @@ import json
 import requests
 import finnhub
 import time
+import signal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -202,7 +203,6 @@ def is_market_open():
     return market_open <= now_et <= market_close
 
 def get_stock_data_finnhub(symbol, days=180):
-    """جلب بيانات السهم من Finnhub كبديل"""
     try:
         if not finnhub_client:
             return None
@@ -418,27 +418,27 @@ def get_top_opportunities():
     all_scores = []
     symbols = [s[0] for s in SHARIAH_STOCKS]
     
-        logger.info("Attempting Yahoo Finance download...")
-        try:
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Yahoo download timeout")
-            
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(60)  # 60 ثانية timeout
-            
-            data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
-            
-            signal.alarm(0)  # إلغاء timeout
-            logger.info(f"Yahoo download completed")
-            yahoo_success = True
-            
-        except (TimeoutError, Exception) as e:
-            logger.error(f"Yahoo Finance failed: {e}")
-            yahoo_success = False
-            data = {}
+    logger.info("Attempting Yahoo Finance download...")
+    yahoo_success = False
+    data = {}
     
+    try:
+        def timeout_handler(signum, frame):
+            raise TimeoutError("Yahoo download timeout")
+        
+        signal.signal(signal.SIGALRM, timeout_handler)
+        signal.alarm(30)
+        
+        data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
+        
+        signal.alarm(0)
+        logger.info(f"Yahoo download completed")
+        yahoo_success = True
+        
+    except (TimeoutError, Exception) as e:
+        logger.error(f"Yahoo Finance failed: {e}. Switching to Finnhub...")
+        yahoo_success = False
+        data = {}
     
     for symbol, name in SHARIAH_STOCKS:
         try:
