@@ -18,27 +18,6 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__) 
 
-def get_time_ago_arabic(timestamp):
-    try:
-        if timestamp == 0:
-            return "غير محدد"
-        news_date = datetime.fromtimestamp(timestamp, tz=pytz.timezone('US/Eastern'))
-        now = datetime.now(pytz.timezone('US/Eastern'))
-        diff = now - news_date
-        seconds = diff.total_seconds()
-        if seconds < 60:
-            return "منذ لحظات"
-        elif seconds < 3600:
-            mins = int(seconds / 60)
-            return f"منذ {mins} دقيقة"
-        elif seconds < 86400:
-            hours = int(seconds / 3600)
-            return f"منذ {hours} ساعة"
-        else:
-            days = int(seconds / 86400)
-            return f"منذ {days} يوم"
-    except:
-        return "غير محدد" 
 
 app = FastAPI(title="OptiMax API", version="3.1.0") 
 
