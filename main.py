@@ -418,7 +418,6 @@ def get_top_opportunities():
     all_scores = []
     symbols = [s[0] for s in SHARIAH_STOCKS]
     
-    try:
         logger.info("Attempting Yahoo Finance download...")
         try:
             import signal
@@ -439,10 +438,7 @@ def get_top_opportunities():
             logger.error(f"Yahoo Finance failed: {e}")
             yahoo_success = False
             data = {}
-    except Exception as e:
-        logger.error(f"Yahoo Finance failed: {e}")
-        yahoo_success = False
-        data = {}
+    
     
     for symbol, name in SHARIAH_STOCKS:
         try:
