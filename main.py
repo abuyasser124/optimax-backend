@@ -13,6 +13,8 @@ from functools import lru_cache
 import logging
 import json
 import requests
+import finnhub
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,6 +55,9 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
+
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")
+finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY) if FINNHUB_API_KEY else None
 
 SHARIAH_STOCKS = [
     ("AAPL", "Apple Inc"), ("MSFT", "Microsoft Corporation"), ("GOOGL", "Alphabet Inc Class A"),
@@ -175,7 +180,7 @@ SHARIAH_STOCKS = [
 
 _cache = {}
 _cache_time = {}
-CACHE_DURATION = 1800  # 30 minutes
+CACHE_DURATION = 1800
 
 def get_cache(key):
     if key in _cache:
@@ -196,6 +201,37 @@ def is_market_open():
     market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
     return market_open <= now_et <= market_close
 
+def get_stock_data_finnhub(symbol, days=180):
+    """جلب بيانات السهم من Finnhub كبديل"""
+    try:
+        if not finnhub_client:
+            return None
+        
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        end_ts = int(end_date.timestamp())
+        start_ts = int(start_date.timestamp())
+        
+        data = finnhub_client.stock_candles(symbol, 'D', start_ts, end_ts)
+        
+        if data.get('s') != 'ok' or not data.get('c'):
+            return None
+        
+        df = pd.DataFrame({
+            'Open': data['o'],
+            'High': data['h'],
+            'Low': data['l'],
+            'Close': data['c'],
+            'Volume': data['v']
+        }, index=pd.to_datetime(data['t'], unit='s'))
+        
+        time.sleep(0.1)
+        return df
+        
+    except Exception as e:
+        logger.error(f"Finnhub error {symbol}: {e}")
+        return None
+
 @app.get("/")
 def root():
     return {
@@ -203,7 +239,7 @@ def root():
         "version": "3.0.0",
         "total_stocks": len(SHARIAH_STOCKS),
         "market_open": is_market_open(),
-        "message": "Advanced 10-Indicator Analysis"
+        "message": "Advanced 10-Indicator Analysis (Yahoo + Finnhub)"
     }
 
 def calculate_indicators(df):
@@ -261,9 +297,9 @@ def calculate_indicators(df):
 def calculate_score(row, current_price, prev_close, df):
     score = 0.0
     signals = []
+    sma_200_penalty = 0
     
     try:
-        sma_200_penalty = 0
         if not pd.isna(row['SMA_200']):
             if current_price > row['SMA_200']:
                 score += 2.0
@@ -315,7 +351,6 @@ def calculate_score(row, current_price, prev_close, df):
             elif row['ADX'] < 20:
                 signals.append("ADX ضعيف (سوق جانبي)")
         
-        # بونص MFI + ADX
         strong_momentum = False
         if not pd.isna(row['MFI']) and not pd.isna(row['ADX']) and not pd.isna(row['MFI_Change']):
             if row['MFI_Change'] > 0 and row['ADX'] > 25:
@@ -323,14 +358,6 @@ def calculate_score(row, current_price, prev_close, df):
                 strong_momentum = True
                 signals.append("⚡ MFI صاعد + ADX قوي (زخم استثنائي)")
         
-        # إلغاء عقوبة SMA-200 عند الزخم القوي
-        if strong_momentum and not pd.isna(row['ROC']):
-            if row['ROC'] > 5:
-                score -= sma_200_penalty
-                if sma_200_penalty < 0:
-                    signals.append("✓ زخم قوي يتجاوز SMA-200")
-        else:
-            score += sma_200_penalty
         if not pd.isna(row['ROC']):
             if row['ROC'] > 5:
                 score += 0.5
@@ -351,10 +378,13 @@ def calculate_score(row, current_price, prev_close, df):
                 score += 0.5
                 signals.append(f"فجوة صاعدة ({gap_pct:.1f}%) + حجم (دخول محتمل)")
         
-        if not pd.isna(row['MFI']) and not pd.isna(row['ADX']) and not pd.isna(row['MFI_Change']):
-            if row['MFI_Change'] > 0 and row['ADX'] > 25:
-                score += 2.0
-                signals.append("⚡ MFI صاعد + ADX قوي (زخم استثنائي)")
+        if strong_momentum and not pd.isna(row['ROC']):
+            if row['ROC'] > 5:
+                score -= sma_200_penalty
+                if sma_200_penalty < 0:
+                    signals.append("✓ زخم قوي يتجاوز SMA-200")
+        else:
+            score += sma_200_penalty
         
     except Exception as e:
         logger.error(f"Error in score: {e}")
@@ -384,116 +414,117 @@ def get_top_opportunities():
     
     logger.info(f"Starting analysis of {len(SHARIAH_STOCKS)} stocks...")
     
-    # تجاهل S&P 500 لتجنب Rate Limit
     sp500_return = 0
-    
     all_scores = []
     symbols = [s[0] for s in SHARIAH_STOCKS]
     
     try:
+        logger.info("Attempting Yahoo Finance download...")
         data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
-        
-        logger.info(f"Download completed")
-        logger.info(f"Data type: {type(data)}")
-        logger.info(f"Data empty: {data.empty if hasattr(data, 'empty') else 'Unknown'}")
-        if hasattr(data, 'columns'):
-            logger.info(f"Columns count: {len(data.columns)}")
-            logger.info(f"First 5 columns: {data.columns[:5].tolist()}")
-        
-        for symbol, name in SHARIAH_STOCKS:
-            try:
-                if symbol not in data:
-                    continue
-                    
-                stock_data = data[symbol].copy()
-                
-                if stock_data.empty or len(stock_data) < 200:
-                    continue
-                
-                stock_data = calculate_indicators(stock_data)
-                latest = stock_data.iloc[-1]
-                prev_close = stock_data.iloc[-2]['Close']
-                current_price = latest['Close']
-                
-                score, signals = calculate_score(latest, current_price, prev_close, stock_data)
-                stock_return = ((current_price - stock_data.iloc[-30]['Close']) / stock_data.iloc[-30]['Close']) * 100
-                relative_strength = stock_return - sp500_return
-                
-                all_scores.append({
-                    "symbol": symbol,
-                    "name": name,
-                    "price": round(float(current_price), 2),
-                    "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2),
-                    "score": round(score, 1),
-                    "signal": get_signal(score),
-                    "rsi": round(float(latest['RSI']), 1) if not pd.isna(latest['RSI']) else None,
-                    "macd": round(float(latest['MACD']), 2) if not pd.isna(latest['MACD']) else None,
-                    "relative_strength": round(relative_strength, 2),
-                })
-                
-            except Exception as e:
-                logger.error(f"Error analyzing {symbol}: {e}")
+        logger.info(f"Yahoo download completed")
+        yahoo_success = True
+    except Exception as e:
+        logger.error(f"Yahoo Finance failed: {e}")
+        yahoo_success = False
+        data = {}
+    
+    for symbol, name in SHARIAH_STOCKS:
+        try:
+            stock_data = None
+            
+            if yahoo_success:
+                try:
+                    if len(symbols) > 1:
+                        if hasattr(data, 'columns') and hasattr(data.columns, 'levels') and symbol in data.columns.levels[0]:
+                            stock_data = data[symbol].copy()
+                    else:
+                        stock_data = data.copy()
+                except:
+                    pass
+            
+            if stock_data is None or stock_data.empty:
+                logger.info(f"Trying Finnhub for {symbol}")
+                stock_data = get_stock_data_finnhub(symbol)
+            
+            if stock_data is None or stock_data.empty or len(stock_data) < 200:
                 continue
-        
-        all_scores.sort(key=lambda x: x['score'], reverse=True)
-        top_50 = all_scores[:50]
-        
-        logger.info(f"Top 50 selected. Sending to Claude AI...")
-        
-        final_top_20 = []
-        
-        if claude_client:
-            try:
-                stocks_summary = "\n".join([
-                    f"{i+1}. {s['symbol']} - Score: {s['score']}/10, RS: {s['relative_strength']}%"
-                    for i, s in enumerate(top_50)
-                ])
-                
-                prompt = f"""أنت محلل أسهم خبير. اختر أفضل 20 سهم من القائمة:
+            
+            stock_data = calculate_indicators(stock_data)
+            latest = stock_data.iloc[-1]
+            prev_close = stock_data.iloc[-2]['Close']
+            current_price = latest['Close']
+            
+            score, signals = calculate_score(latest, current_price, prev_close, stock_data)
+            stock_return = ((current_price - stock_data.iloc[-30]['Close']) / stock_data.iloc[-30]['Close']) * 100
+            relative_strength = stock_return - sp500_return
+            
+            all_scores.append({
+                "symbol": symbol,
+                "name": name,
+                "price": round(float(current_price), 2),
+                "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2),
+                "score": round(score, 1),
+                "signal": get_signal(score),
+                "rsi": round(float(latest['RSI']), 1) if not pd.isna(latest['RSI']) else None,
+                "macd": round(float(latest['MACD']), 2) if not pd.isna(latest['MACD']) else None,
+                "relative_strength": round(relative_strength, 2),
+            })
+            
+        except Exception as e:
+            logger.error(f"Error analyzing {symbol}: {e}")
+            continue
+    
+    logger.info(f"Analyzed {len(all_scores)} stocks successfully")
+    
+    all_scores.sort(key=lambda x: x['score'], reverse=True)
+    top_50 = all_scores[:50]
+    
+    final_top_20 = []
+    
+    if claude_client and len(top_50) > 0:
+        try:
+            stocks_summary = "\n".join([
+                f"{i+1}. {s['symbol']} - Score: {s['score']}/10"
+                for i, s in enumerate(top_50)
+            ])
+            
+            prompt = f"""اختر أفضل 20 سهم:
 
 {stocks_summary}
 
-RS = Relative Strength مقابل S&P 500
+أرجع فقط رموز مفصولة بفاصلة:"""
 
-أرجع فقط رموز الأسهم مفصولة بفاصلة:"""
-
-                message = claude_client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=500,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                
-                selected_symbols = message.content[0].text.strip().split(',')
-                selected_symbols = [s.strip() for s in selected_symbols][:20]
-                
-                for symbol in selected_symbols:
-                    stock = next((s for s in top_50 if s['symbol'] == symbol), None)
-                    if stock:
-                        final_top_20.append(stock)
-                
-                logger.info(f"Claude AI selected {len(final_top_20)} stocks")
-                
-            except Exception as e:
-                logger.error(f"Claude error: {e}")
-                final_top_20 = top_50[:20]
-        else:
+            message = claude_client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=500,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            selected_symbols = message.content[0].text.strip().split(',')
+            selected_symbols = [s.strip() for s in selected_symbols][:20]
+            
+            for symbol in selected_symbols:
+                stock = next((s for s in top_50 if s['symbol'] == symbol), None)
+                if stock:
+                    final_top_20.append(stock)
+            
+        except Exception as e:
+            logger.error(f"Claude error: {e}")
             final_top_20 = top_50[:20]
-        
-        result = {
-            "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(),
-            "market_open": is_market_open(),
-            "total_analyzed": len(all_scores),
-            "sp500_performance": round(sp500_return, 2),
-            "top_opportunities": final_top_20,
-            "analysis_method": "Advanced 10-Indicator Analysis + Claude AI"
-        }
-        
-        set_cache(cache_key, result)
-        return result
-        
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    else:
+        final_top_20 = top_50[:20]
+    
+    result = {
+        "updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(),
+        "market_open": is_market_open(),
+        "total_analyzed": len(all_scores),
+        "sp500_performance": round(sp500_return, 2),
+        "top_opportunities": final_top_20,
+        "analysis_method": "Yahoo Finance + Finnhub Backup"
+    }
+    
+    set_cache(cache_key, result)
+    return result
 
 @app.get("/analysis/{symbol}")
 def get_detailed_analysis(symbol: str):
@@ -512,6 +543,10 @@ def get_detailed_analysis(symbol: str):
         df = stock.history(period="6mo")
         
         if df.empty:
+            logger.info(f"Yahoo failed for {symbol}, trying Finnhub")
+            df = get_stock_data_finnhub(symbol)
+        
+        if df is None or df.empty:
             raise HTTPException(status_code=404, detail="No data available")
         
         df = calculate_indicators(df)
@@ -553,28 +588,11 @@ def get_detailed_analysis(symbol: str):
         
         if claude_client:
             try:
-                indicators_text = f"""المؤشرات الفنية:
-- RSI: {basic_data['indicators']['rsi']}
-- MACD: {basic_data['indicators']['macd']}
-- SMA 200: ${basic_data['indicators']['sma_200'] if basic_data['indicators']['sma_200'] else 'N/A'}
-- MFI: {basic_data['indicators']['mfi'] if basic_data['indicators']['mfi'] else 'N/A'}
-- ADX: {basic_data['indicators']['adx'] if basic_data['indicators']['adx'] else 'N/A'}
-- ROC: {basic_data['indicators']['roc'] if basic_data['indicators']['roc'] else 'N/A'}%
-
-إشارات: {chr(10).join(['- ' + s for s in signals])}
-
-وقف الخسارة الديناميكي: ${basic_data['dynamic_stop_loss']}"""
-
-                prompt = f"""أنت محلل أسهم خبير.
-
-{stock_info[1]} ({symbol})
+                prompt = f"""{stock_info[1]} ({symbol})
 السعر: ${current_price:.2f}
 النقاط: {basic_data['score']}/10
-الإشارة: {signal}
 
-{indicators_text}
-
-قدم تحليلاً بصيغة JSON:
+JSON:
 {{
   "entry_point": 000.00,
   "target_short": 000.00,
@@ -582,10 +600,8 @@ def get_detailed_analysis(symbol: str):
   "stop_loss": {basic_data['dynamic_stop_loss']},
   "success_rate": 00,
   "valid_until": "YYYY-MM-DD",
-  "analysis": "تحليل مختصر 3-4 أسطر"
-}}
-
-التاريخ الحالي: {datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d')}"""
+  "analysis": "تحليل مختصر"
+}}"""
 
                 message = claude_client.messages.create(
                     model="claude-sonnet-4-20250514",
@@ -619,11 +635,11 @@ def get_detailed_analysis(symbol: str):
                 news_titles = [item.get("content", {}).get("title", "") for item in news_items if item.get("content", {}).get("title")]
                 
                 if news_titles and claude_client:
-                    news_prompt = f"""حلل الأخبار عن {stock_info[1]} وصنفها:
+                    news_prompt = f"""حلل الأخبار:
 
 {chr(10).join([f"{i+1}. {title}" for i, title in enumerate(news_titles)])}
 
-أرجع JSON فقط:
+JSON:
 [
   {{"sentiment": "positive/negative/neutral", "emoji": "🟢/🔴/🟡"}},
 ]"""
@@ -665,25 +681,6 @@ def get_detailed_analysis(symbol: str):
                                 })
                     except Exception as e:
                         logger.error(f"Sentiment error: {e}")
-                        for item in news_items:
-                            pub_time_str = item.get("content", {}).get("pubDate", "")
-                            if pub_time_str:
-                                try:
-                                    pub_datetime = datetime.strptime(pub_time_str.replace('Z', '+00:00'), "%Y-%m-%dT%H:%M:%S%z")
-                                    pub_time = int(pub_datetime.timestamp())
-                                    time_ago = get_time_ago_arabic(pub_time)
-                                except:
-                                    time_ago = "غير محدد"
-                            else:
-                                time_ago = "غير محدد"
-                            
-                            news_list.append({
-                                "title": item.get("content", {}).get("title", ""),
-                                "publisher": item.get("content", {}).get("provider", {}).get("displayName", ""),
-                                "sentiment": "neutral",
-                                "emoji": "🟡",
-                                "time_ago": time_ago
-                            })
             
             basic_data["news"] = news_list
         except Exception as e:
@@ -711,7 +708,7 @@ def market_status():
         "total_stocks": len(SHARIAH_STOCKS),
         "cache_duration": f"{CACHE_DURATION} seconds",
         "claude_enabled": claude_client is not None,
-        "analysis_version": "3.0.0 - Advanced 10-Indicator Analysis",
+        "analysis_version": "3.0.0 - Yahoo + Finnhub Backup",
         "indicators": [
             "SMA-200 Filter",
             "RSI + Volume",
@@ -722,7 +719,7 @@ def market_status():
             "ATR (Dynamic Stops)",
             "Rate of Change (ROC)",
             "Gap Analysis",
-            "Relative Strength vs S&P 500"
+            "Relative Strength"
         ]
     }
 
