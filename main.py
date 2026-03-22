@@ -393,6 +393,13 @@ def get_top_opportunities():
     try:
         data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
         
+        logger.info(f"Download completed")
+        logger.info(f"Data type: {type(data)}")
+        logger.info(f"Data empty: {data.empty if hasattr(data, 'empty') else 'Unknown'}")
+        if hasattr(data, 'columns'):
+            logger.info(f"Columns count: {len(data.columns)}")
+            logger.info(f"First 5 columns: {data.columns[:5].tolist()}")
+        
         for symbol, name in SHARIAH_STOCKS:
             try:
                 if symbol not in data:
