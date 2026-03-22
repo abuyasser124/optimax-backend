@@ -58,7 +58,7 @@ def get_stock_data_alpha(symbol):
     try:
         if not ALPHA_VANTAGE_API_KEY:
             return None
-        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=full&apikey={ALPHA_VANTAGE_API_KEY}"
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=compact&apikey={ALPHA_VANTAGE_API_KEY}"
         response = requests.get(url, timeout=15)
         if response.status_code != 200:
             return None
