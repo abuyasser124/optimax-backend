@@ -229,10 +229,11 @@ def get_signal(score):
 
 @app.get("/top-opportunities")
 def get_top_opportunities():
-    cache_key = "top_opportunities"
-    cached = get_cache(cache_key)
-    if cached:
-        return cached
+    # cache_key = "top_opportunities"
+    # cached = get_cache(cache_key)
+    # if cached:
+    #     return cached
+    logger.info(f"Starting Alpha Vantage analysis of {len(SHARIAH_STOCKS)} stocks...")
     logger.info(f"Starting Alpha Vantage analysis of {len(SHARIAH_STOCKS)} stocks...")
     logger.info("This will take approximately 15 minutes...")
     sp500_return = 0
@@ -276,7 +277,7 @@ def get_top_opportunities():
     else:
         final_top_20 = top_50[:20]
     result = {"updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(), "market_open": is_market_open(), "total_analyzed": len(all_scores), "sp500_performance": round(sp500_return, 2), "top_opportunities": final_top_20, "analysis_method": "Alpha Vantage API", "note": "Auto-updates daily at 12:00 PM ET"}
-    set_cache(cache_key, result)
+    # set_cache(cache_key, result)
     return result
 
 @app.get("/analysis/{symbol}")
