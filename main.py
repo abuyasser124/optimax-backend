@@ -394,12 +394,41 @@ def get_top_opportunities():
     symbols = [s[0] for s in SHARIAH_STOCKS]
     
     try:
-        data = yf.download(symbols, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
+        # تحليل على دفعات لتجنب Rate Limit
+        import time
+        batch_size = 100
+        all_data = {}
+        
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i+batch_size]
+            logger.info(f"Downloading batch {i//batch_size + 1}: {len(batch)} stocks")
+            
+            try:
+                batch_data = yf.download(batch, period="6mo", interval="1d", group_by='ticker', threads=True, progress=False)
+                
+                if len(batch) == 1:
+                    all_data[batch[0]] = batch_data
+                else:
+                    for sym in batch:
+                        if sym in batch_data:
+                            all_data[sym] = batch_data[sym]
+                
+                # انتظار ثانيتين بين كل دفعة
+                if i + batch_size < len(symbols):
+                    time.sleep(2)
+                    
+            except Exception as e:
+                logger.error(f"Error downloading batch: {e}")
+                continue
+        
+        data = all_data
         
         for symbol, name in SHARIAH_STOCKS:
             try:
-                if len(symbols) > 1:
-                    stock_data = data[symbol].copy()
+                if symbol not in data:
+                    continue
+                    
+                stock_data = data[symbol].copy()
                 else:
                     stock_data = data.copy()
                 
