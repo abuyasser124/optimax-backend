@@ -396,7 +396,7 @@ def get_top_opportunities():
     try:
         # تحليل على دفعات لتجنب Rate Limit
         import time
-        batch_size = 100
+        batch_size = 50
         all_data = {}
         
         for i in range(0, len(symbols), batch_size):
@@ -413,10 +413,9 @@ def get_top_opportunities():
                         if sym in batch_data:
                             all_data[sym] = batch_data[sym]
                 
-                # انتظار ثانيتين بين كل دفعة
+                    # انتظار 5 ثوانٍ بين كل دفعة
                 if i + batch_size < len(symbols):
-                    time.sleep(2)
-                    
+                    time.sleep(5)
             except Exception as e:
                 logger.error(f"Error downloading batch: {e}")
                 continue
