@@ -8,13 +8,11 @@ import anthropic
 import os
 import logging
 import json
-import requests
-import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OptiMax API", version="3.2.0")
+app = FastAPI(title="OptiMax API", version="3.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,8 +24,6 @@ app.add_middleware(
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
-
-ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
 SHARIAH_STOCKS = [("AAPL", "Apple Inc"), ("MSFT", "Microsoft Corporation"), ("GOOGL", "Alphabet Inc Class A"), ("GOOG", "Alphabet Inc Class C"), ("NVDA", "NVIDIA Corporation"), ("META", "Meta Platforms Inc"), ("TSLA", "Tesla Inc"), ("AMZN", "Amazon.com Inc"), ("AMD", "Advanced Micro Devices Inc"), ("AVGO", "Broadcom Inc"), ("INTC", "Intel Corporation"), ("QCOM", "QUALCOMM Inc"), ("TXN", "Texas Instruments Inc"), ("AMAT", "Applied Materials Inc"), ("LRCX", "Lam Research Corporation"), ("KLAC", "KLA Corporation"), ("NXPI", "NXP Semiconductors NV"), ("MU", "Micron Technology Inc"), ("MRVL", "Marvell Technology Inc"), ("SNPS", "Synopsys Inc"), ("CDNS", "Cadence Design Systems Inc"), ("MCHP", "Microchip Technology Inc"), ("ON", "ON Semiconductor Corporation"), ("SWKS", "Skyworks Solutions Inc"), ("QRVO", "Qorvo Inc"), ("MPWR", "Monolithic Power Systems Inc"), ("ADI", "Analog Devices Inc"), ("ASML", "ASML Holding NV"), ("ADBE", "Adobe Inc"), ("CRM", "Salesforce Inc"), ("ORCL", "Oracle Corporation"), ("NOW", "ServiceNow Inc"), ("WDAY", "Workday Inc"), ("DDOG", "Datadog Inc"), ("SNOW", "Snowflake Inc"), ("MDB", "MongoDB Inc"), ("TEAM", "Atlassian Corporation"), ("ZM", "Zoom Video Communications"), ("DOCU", "DocuSign Inc"), ("PLTR", "Palantir Technologies Inc"), ("PANW", "Palo Alto Networks Inc"), ("CRWD", "CrowdStrike Holdings Inc"), ("FTNT", "Fortinet Inc"), ("ZS", "Zscaler Inc"), ("OKTA", "Okta Inc"), ("NET", "Cloudflare Inc"), ("CSCO", "Cisco Systems Inc"), ("IBM", "IBM Corporation"), ("DELL", "Dell Technologies Inc"), ("HPQ", "HP Inc"), ("HPE", "Hewlett Packard Enterprise"), ("FICO", "Fair Isaac Corporation"), ("ANSS", "ANSYS Inc"), ("INTU", "Intuit Inc"), ("TYL", "Tyler Technologies Inc"), ("RNG", "RingCentral Inc"), ("TWLO", "Twilio Inc"), ("DBX", "Dropbox Inc"), ("BOX", "Box Inc"), ("ZI", "ZoomInfo Technologies Inc"), ("VEEV", "Veeva Systems Inc"), ("SHOP", "Shopify Inc"), ("EBAY", "eBay Inc"), ("ETSY", "Etsy Inc"), ("DASH", "DoorDash Inc"), ("UBER", "Uber Technologies Inc"), ("LYFT", "Lyft Inc"), ("ABNB", "Airbnb Inc"), ("PYPL", "PayPal Holdings Inc"), ("SQ", "Block Inc"), ("COIN", "Coinbase Global Inc"), ("AFRM", "Affirm Holdings Inc"), ("SPOT", "Spotify Technology SA"), ("ROKU", "Roku Inc"), ("PINS", "Pinterest Inc"), ("SNAP", "Snap Inc"), ("MTCH", "Match Group Inc"), ("RBLX", "Roblox Corporation"), ("U", "Unity Software Inc"), ("TTWO", "Take-Two Interactive Software"), ("EA", "Electronic Arts Inc"), ("ATVI", "Activision Blizzard"), ("NFLX", "Netflix Inc"), ("DIS", "The Walt Disney Company"), ("PARA", "Paramount Global"), ("WBD", "Warner Bros Discovery"), ("FWONK", "Liberty Media Formula One"), ("LSXMA", "Liberty Media SiriusXM"), ("CHTR", "Charter Communications"), ("CMCSA", "Comcast Corporation"), ("TMUS", "T-Mobile US Inc"), ("AMGN", "Amgen Inc"), ("GILD", "Gilead Sciences Inc"), ("REGN", "Regeneron Pharmaceuticals"), ("VRTX", "Vertex Pharmaceuticals Inc"), ("BIIB", "Biogen Inc"), ("ILMN", "Illumina Inc"), ("ISRG", "Intuitive Surgical Inc"), ("DXCM", "DexCom Inc"), ("ALGN", "Align Technology Inc"), ("ABT", "Abbott Laboratories"), ("TMO", "Thermo Fisher Scientific Inc"), ("DHR", "Danaher Corporation"), ("SYK", "Stryker Corporation"), ("EW", "Edwards Lifesciences Corporation"), ("BSX", "Boston Scientific Corporation"), ("INCY", "Incyte Corporation"), ("ALNY", "Alnylam Pharmaceuticals Inc"), ("MRNA", "Moderna Inc"), ("BNTX", "BioNTech SE"), ("IDXX", "IDEXX Laboratories Inc"), ("ZBH", "Zimmer Biomet Holdings Inc"), ("BDX", "Becton Dickinson and Company"), ("BAX", "Baxter International Inc"), ("RMD", "ResMed Inc"), ("HOLX", "Hologic Inc"), ("TECH", "Bio-Techne Corporation"), ("RVTY", "Revvity Inc"), ("IQV", "IQVIA Holdings Inc"), ("CRL", "Charles River Laboratories"), ("RGEN", "Repligen Corporation"), ("EXAS", "Exact Sciences Corporation"), ("ARWR", "Arrowhead Pharmaceuticals"), ("IONS", "Ionis Pharmaceuticals"), ("RARE", "Ultragenyx Pharmaceutical"), ("BMRN", "BioMarin Pharmaceutical"), ("SRPT", "Sarepta Therapeutics"), ("NBIX", "Neurocrine Biosciences"), ("UTHR", "United Therapeutics"), ("JAZZ", "Jazz Pharmaceuticals"), ("HALO", "Halozyme Therapeutics"), ("BLUE", "bluebird bio"), ("FOLD", "Amicus Therapeutics"), ("LEGN", "Legend Biotech"), ("KRYS", "Krystal Biotech"), ("RCKT", "Rocket Pharmaceuticals"), ("AGIO", "Agios Pharmaceuticals"), ("NTRA", "Natera Inc"), ("NVTA", "Invitae Corporation"), ("PACB", "Pacific Biosciences"), ("VCYT", "Veracyte Inc"), ("CDNA", "CareDx Inc"), ("IRTC", "iRhythm Technologies"), ("OFIX", "Orthofix Medical"), ("NVCR", "NovoCure Limited"), ("TMDX", "TransMedics Group"), ("PRVA", "Privia Health Group"), ("CRVL", "CorVel Corporation"), ("LFST", "LifeStance Health Group"), ("HIMS", "Hims & Hers Health"), ("DOCS", "Doximity Inc"), ("TDOC", "Teladoc Health Inc"), ("OSCR", "Oscar Health"), ("CLOV", "Clover Health"), ("SDGR", "Schrodinger Inc"), ("RXRX", "Recursion Pharmaceuticals"), ("ABCL", "AbCellera Biologics"), ("RLAY", "Relay Therapeutics"), ("VERV", "Verve Therapeutics"), ("BEAM", "Beam Therapeutics"), ("CRSP", "CRISPR Therapeutics"), ("EDIT", "Editas Medicine"), ("NTLA", "Intellia Therapeutics"), ("CRBU", "Caribou Biosciences"), ("PRME", "Prime Medicine"), ("ACLX", "Arcellx Inc"), ("SANA", "Sana Biotechnology"), ("DAWN", "Day One Biopharmaceuticals"), ("KROS", "Keros Therapeutics"), ("IMVT", "Immunovant Inc"), ("ARVN", "Arvinas Inc"), ("KYMR", "Kymera Therapeutics"), ("COST", "Costco Wholesale Corporation"), ("NKE", "NIKE Inc"), ("SBUX", "Starbucks Corporation"), ("MCD", "McDonald's Corporation"), ("LULU", "Lululemon Athletica Inc"), ("WMT", "Walmart Inc"), ("TGT", "Target Corporation"), ("HD", "The Home Depot Inc"), ("LOW", "Lowe's Companies Inc"), ("TJX", "The TJX Companies Inc"), ("ROST", "Ross Stores Inc"), ("DG", "Dollar General Corporation"), ("DLTR", "Dollar Tree Inc"), ("ULTA", "Ulta Beauty Inc"), ("YUM", "Yum! Brands Inc"), ("CMG", "Chipotle Mexican Grill Inc"), ("BKNG", "Booking Holdings Inc"), ("MAR", "Marriott International"), ("HLT", "Hilton Worldwide Holdings"), ("MGM", "MGM Resorts International"), ("WYNN", "Wynn Resorts Limited"), ("LVS", "Las Vegas Sands Corp"), ("CZR", "Caesars Entertainment"), ("PENN", "PENN Entertainment"), ("DKNG", "DraftKings Inc"), ("FLUT", "Flutter Entertainment"), ("CHWY", "Chewy Inc"), ("CVNA", "Carvana Co"), ("CPNG", "Coupang Inc"), ("BABA", "Alibaba Group Holding"), ("JD", "JD.com Inc"), ("PDD", "PDD Holdings Inc"), ("MELI", "MercadoLibre Inc"), ("SE", "Sea Limited"), ("GRAB", "Grab Holdings Limited"), ("BEKE", "KE Holdings Inc"), ("VIPS", "Vipshop Holdings Limited"), ("LI", "Li Auto Inc"), ("XPEV", "XPeng Inc"), ("NIO", "NIO Inc"), ("BILI", "Bilibili Inc"), ("TME", "Tencent Music Entertainment"), ("DIDI", "DiDi Global Inc"), ("TAL", "TAL Education Group"), ("EDU", "New Oriental Education"), ("GOTU", "Gaotu Techedu Inc"), ("IQ", "iQIYI Inc"), ("NTES", "NetEase Inc"), ("BIDU", "Baidu Inc"), ("FSLR", "First Solar Inc"), ("ENPH", "Enphase Energy Inc"), ("SEDG", "SolarEdge Technologies Inc"), ("RUN", "Sunrun Inc"), ("GNRC", "Generac Holdings Inc"), ("RIVN", "Rivian Automotive Inc"), ("LCID", "Lucid Group Inc"), ("PLUG", "Plug Power Inc"), ("CHPT", "ChargePoint Holdings Inc"), ("BLNK", "Blink Charging Co"), ("QS", "QuantumScape Corporation"), ("ALB", "Albemarle Corporation"), ("SQM", "Sociedad Quimica y Minera"), ("LAC", "Lithium Americas Corp"), ("LTHM", "Livent Corporation"), ("MP", "MP Materials Corp"), ("WOLF", "Wolfspeed Inc"), ("OLED", "Universal Display Corporation"), ("POWI", "Power Integrations"), ("VICR", "Vicor Corporation"), ("SLDP", "Solid Power Inc"), ("STEM", "Stem Inc"), ("FLNC", "Fluence Energy Inc"), ("BE", "Bloom Energy Corporation"), ("FCEL", "FuelCell Energy Inc"), ("BLDP", "Ballard Power Systems"), ("CAT", "Caterpillar Inc"), ("DE", "Deere & Company"), ("ETN", "Eaton Corporation"), ("EMR", "Emerson Electric Co"), ("LIN", "Linde plc"), ("APD", "Air Products and Chemicals Inc"), ("ECL", "Ecolab Inc"), ("DD", "DuPont de Nemours Inc"), ("BA", "Boeing Company"), ("GE", "General Electric Company"), ("HON", "Honeywell International Inc"), ("MMM", "3M Company"), ("ITW", "Illinois Tool Works"), ("ROK", "Rockwell Automation"), ("PH", "Parker-Hannifin Corporation"), ("IR", "Ingersoll Rand Inc"), ("CARR", "Carrier Global Corporation"), ("OTIS", "Otis Worldwide Corporation"), ("TT", "Trane Technologies plc"), ("JCI", "Johnson Controls International"), ("AME", "AMETEK Inc"), ("ROP", "Roper Technologies Inc"), ("FTV", "Fortive Corporation"), ("WSO", "Watsco Inc"), ("FAST", "Fastenal Company"), ("WM", "Waste Management Inc"), ("RSG", "Republic Services Inc"), ("WCN", "Waste Connections Inc"), ("SRCL", "Stericycle Inc"), ("GFL", "GFL Environmental Inc"), ("RYN", "Rayonier Inc"), ("WY", "Weyerhaeuser Company"), ("PCH", "PotlatchDeltic Corporation"), ("LPX", "Louisiana-Pacific Corporation"), ("BCC", "Boise Cascade Company"), ("UFPI", "UFP Industries Inc"), ("TREX", "Trex Company Inc"), ("AZEK", "AZEK Company Inc"), ("FND", "Floor & Decor Holdings"), ("BECN", "Beacon Roofing Supply"), ("OC", "Owens Corning"), ("VMC", "Vulcan Materials Company"), ("MLM", "Martin Marietta Materials"), ("SUM", "Summit Materials Inc"), ("USLM", "United States Lime & Minerals"), ("CRH", "CRH plc"), ("STRL", "Sterling Infrastructure Inc"), ("MTZ", "MasTec Inc"), ("PRIM", "Primoris Services Corporation"), ("F", "Ford Motor Company"), ("GM", "General Motors Company"), ("STLA", "Stellantis NV"), ("TM", "Toyota Motor Corporation"), ("HMC", "Honda Motor Co Ltd"), ("NSANY", "Nissan Motor Co Ltd"), ("HYMTF", "Hyundai Motor Company"), ("BMWYY", "BMW AG"), ("VWAGY", "Volkswagen AG"), ("RACE", "Ferrari NV"), ("POAHY", "Porsche Automobil Holding"), ("GELYF", "Geely Automobile Holdings"), ("FUJHY", "Subaru Corporation"), ("MZDAY", "Mazda Motor Corporation"), ("DDAIF", "Daimler Truck Holding AG"), ("VLKAF", "Volvo AB"), ("PCAR", "PACCAR Inc"), ("NAV", "Navistar International"), ("CMI", "Cummins Inc"), ("LEA", "Lear Corporation"), ("PEP", "PepsiCo Inc"), ("KO", "Coca-Cola Company"), ("MDLZ", "Mondelez International"), ("GIS", "General Mills Inc"), ("K", "Kellogg Company"), ("CPB", "Campbell Soup Company"), ("HSY", "Hershey Company"), ("SJM", "J.M. Smucker Company"), ("CAG", "Conagra Brands Inc"), ("HRL", "Hormel Foods Corporation"), ("TSN", "Tyson Foods Inc"), ("BG", "Bunge Limited"), ("ADM", "Archer-Daniels-Midland Company"), ("CALM", "Cal-Maine Foods Inc"), ("INGR", "Ingredion Incorporated"), ("MKC", "McCormick & Company"), ("LANC", "Lancaster Colony Corporation"), ("JJSF", "J & J Snack Foods Corp"), ("SENEA", "Seneca Foods Corporation"), ("FARM", "Farmer Bros Co"), ("SAM", "Boston Beer Company"), ("TAP", "Molson Coors Beverage Company"), ("BUD", "Anheuser-Busch InBev SA"), ("STZ", "Constellation Brands Inc"), ("CELH", "Celsius Holdings Inc"), ("MNST", "Monster Beverage Corporation"), ("KDP", "Keurig Dr Pepper Inc"), ("COKE", "Coca-Cola Consolidated Inc"), ("FIZZ", "National Beverage Corp"), ("PRMW", "Primo Water Corporation")]
 
@@ -65,22 +61,10 @@ def get_stock_data_yf(symbol):
     except Exception as e:
         logger.error(f"YFinance error {symbol}: {e}")
         return None
-        time_series = data["Time Series (Daily)"]
-        df = pd.DataFrame.from_dict(time_series, orient='index')
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-        df = df.rename(columns={'1. open': 'Open', '2. high': 'High', '3. low': 'Low', '4. close': 'Close', '5. volume': 'Volume'})
-        df = df.astype(float)
-        df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
-        time.sleep(2.5)
-        return df
-    except Exception as e:
-        logger.error(f"Alpha error {symbol}: {e}")
-        return None
 
 @app.get("/")
 def root():
-    return {"app": "OptiMax API", "version": "3.2.0", "total_stocks": len(SHARIAH_STOCKS), "market_open": is_market_open(), "message": "Alpha Vantage API - Scheduled at 12:00 PM ET"}
+    return {"app": "OptiMax API", "version": "3.3.0", "total_stocks": len(SHARIAH_STOCKS), "market_open": is_market_open(), "message": "YFinance API - Live Trading Analysis"}
 
 def calculate_indicators(df):
     try:
@@ -99,7 +83,7 @@ def calculate_indicators(df):
         df['BB_upper'] = df['SMA_20'] + (df['BB_std'] * 2)
         df['BB_lower'] = df['SMA_20'] - (df['BB_std'] * 2)
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
-        df['SMA_200'] = df['Close'].rolling(window=200).mean()
+        df['SMA_100'] = df['Close'].rolling(window=100).mean()
         df['Volume_SMA'] = df['Volume'].rolling(window=20).mean()
         typical_price = (df['High'] + df['Low'] + df['Close']) / 3
         money_flow = typical_price * df['Volume']
@@ -131,15 +115,15 @@ def calculate_indicators(df):
 def calculate_score(row, current_price, prev_close, df):
     score = 0.0
     signals = []
-    sma_200_penalty = 0
+    sma_100_penalty = 0
     try:
-        if not pd.isna(row['SMA_200']):
-            if current_price > row['SMA_200']:
+        if not pd.isna(row['SMA_100']):
+            if current_price > row['SMA_100']:
                 score += 2.0
-                signals.append("فوق SMA-200 (اتجاه صاعد)")
+                signals.append("فوق SMA-100 (اتجاه صاعد)")
             else:
-                sma_200_penalty = -0.5
-                signals.append("تحت SMA-200 (تحذير)")
+                sma_100_penalty = -0.5
+                signals.append("تحت SMA-100 (تحذير)")
         volume_ratio = row['Volume'] / row['Volume_SMA'] if row['Volume_SMA'] > 0 else 1
         if row['RSI'] < 30:
             if volume_ratio < 2:
@@ -203,11 +187,11 @@ def calculate_score(row, current_price, prev_close, df):
                 signals.append(f"فجوة صاعدة ({gap_pct:.1f}%) + حجم (دخول محتمل)")
         if strong_momentum and not pd.isna(row['ROC']):
             if row['ROC'] > 5:
-                score -= sma_200_penalty
-                if sma_200_penalty < 0:
-                    signals.append("✓ زخم قوي يتجاوز SMA-200")
+                score -= sma_100_penalty
+                if sma_100_penalty < 0:
+                    signals.append("✓ زخم قوي يتجاوز SMA-100")
         else:
-            score += sma_200_penalty
+            score += sma_100_penalty
     except Exception as e:
         logger.error(f"Error in score: {e}")
     return min(max(score, 0), 10.0), signals
@@ -228,13 +212,7 @@ def get_signal(score):
 
 @app.get("/top-opportunities")
 def get_top_opportunities():
-    # cache_key = "top_opportunities"
-    # cached = get_cache(cache_key)
-    # if cached:
-    #     return cached
-    logger.info(f"Starting Alpha Vantage analysis of {len(SHARIAH_STOCKS)} stocks...")
-    logger.info(f"Starting Alpha Vantage analysis of {len(SHARIAH_STOCKS)} stocks...")
-    logger.info("This will take approximately 15 minutes...")
+    logger.info(f"Starting YFinance analysis of {len(SHARIAH_STOCKS)} stocks...")
     sp500_return = 0
     all_scores = []
     total = len(SHARIAH_STOCKS)
@@ -242,7 +220,7 @@ def get_top_opportunities():
         try:
             logger.info(f"Analyzing {idx}/{total}: {symbol}")
             stock_data = get_stock_data_yf(symbol)
-            if stock_data is None or stock_data.empty or len(stock_data) < 200:
+            if stock_data is None or stock_data.empty or len(stock_data) < 100:
                 continue
             stock_data = calculate_indicators(stock_data)
             latest = stock_data.iloc[-1]
@@ -275,8 +253,7 @@ def get_top_opportunities():
             final_top_20 = top_50[:20]
     else:
         final_top_20 = top_50[:20]
-    result = {"updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(), "market_open": is_market_open(), "total_analyzed": len(all_scores), "sp500_performance": round(sp500_return, 2), "top_opportunities": final_top_20, "analysis_method": "Alpha Vantage API", "note": "Auto-updates daily at 12:00 PM ET"}
-    # set_cache(cache_key, result)
+    result = {"updated_at": datetime.now(pytz.timezone('US/Eastern')).isoformat(), "market_open": is_market_open(), "total_analyzed": len(all_scores), "sp500_performance": round(sp500_return, 2), "top_opportunities": final_top_20, "analysis_method": "YFinance API"}
     return result
 
 @app.get("/analysis/{symbol}")
@@ -301,7 +278,7 @@ def get_detailed_analysis(symbol: str):
         signal = get_signal(score)
         atr_value = latest['ATR']
         dynamic_stop = current_price - (1.5 * atr_value)
-        basic_data = {"symbol": symbol, "name": stock_info[1], "price": round(float(current_price), 2), "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2), "score": round(score, 1), "signal": signal, "signals_detail": signals, "indicators": {"rsi": round(float(latest['RSI']), 2), "macd": round(float(latest['MACD']), 4), "macd_signal": round(float(latest['MACD_Signal']), 4), "macd_histogram": round(float(latest['MACD_Hist']), 4), "sma_20": round(float(latest['SMA_20']), 2), "sma_50": round(float(latest['SMA_50']), 2), "sma_200": round(float(latest['SMA_200']), 2) if not pd.isna(latest['SMA_200']) else None, "bb_upper": round(float(latest['BB_upper']), 2), "bb_lower": round(float(latest['BB_lower']), 2), "mfi": round(float(latest['MFI']), 2) if not pd.isna(latest['MFI']) else None, "adx": round(float(latest['ADX']), 2) if not pd.isna(latest['ADX']) else None, "atr": round(float(latest['ATR']), 2), "roc": round(float(latest['ROC']), 2) if not pd.isna(latest['ROC']) else None}, "dynamic_stop_loss": round(float(dynamic_stop), 2)}
+        basic_data = {"symbol": symbol, "name": stock_info[1], "price": round(float(current_price), 2), "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2), "score": round(score, 1), "signal": signal, "signals_detail": signals, "indicators": {"rsi": round(float(latest['RSI']), 2), "macd": round(float(latest['MACD']), 4), "macd_signal": round(float(latest['MACD_Signal']), 4), "macd_histogram": round(float(latest['MACD_Hist']), 4), "sma_20": round(float(latest['SMA_20']), 2), "sma_50": round(float(latest['SMA_50']), 2), "sma_100": round(float(latest['SMA_100']), 2) if not pd.isna(latest['SMA_100']) else None, "bb_upper": round(float(latest['BB_upper']), 2), "bb_lower": round(float(latest['BB_lower']), 2), "mfi": round(float(latest['MFI']), 2) if not pd.isna(latest['MFI']) else None, "adx": round(float(latest['ADX']), 2) if not pd.isna(latest['ADX']) else None, "atr": round(float(latest['ATR']), 2), "roc": round(float(latest['ROC']), 2) if not pd.isna(latest['ROC']) else None}, "dynamic_stop_loss": round(float(dynamic_stop), 2)}
         if claude_client:
             try:
                 prompt = f"""{stock_info[1]} ({symbol})\nالسعر: ${current_price:.2f}\nالنقاط: {basic_data['score']}/10\n\nJSON:\n{{\n  "entry_point": 000.00,\n  "target_short": 000.00,\n  "target_medium": 000.00,\n  "stop_loss": {basic_data['dynamic_stop_loss']},\n  "success_rate": 00,\n  "valid_until": "YYYY-MM-DD",\n  "analysis": "تحليل مختصر"\n}}"""
@@ -332,5 +309,6 @@ def get_detailed_analysis(symbol: str):
 def market_status():
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
-    return {"market_open": is_market_open(), "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"), "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)", "total_stocks": len(SHARIAH_STOCKS), "cache_duration": f"{CACHE_DURATION} seconds (30 min)", "claude_enabled": claude_client is not None, "alpha_vantage_enabled": bool(ALPHA_VANTAGE_API_KEY), "analysis_version": "3.2.0 - Alpha Vantage", "scheduled_update": "Daily at 12:00 PM ET (8-9 PM Saudi)", "indicators": ["SMA-200 Filter", "RSI + Volume", "MACD Crossover", "Bollinger Bands", "Money Flow Index (MFI)", "ADX (Trend Strength)", "ATR (Dynamic Stops)", "Rate of Change (ROC)", "Gap Analysis", "Relative Strength"]}
+    return {"market_open": is_market_open(), "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"), "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)", "total_stocks": len(SHARIAH_STOCKS), "cache_duration": f"{CACHE_DURATION} seconds (30 min)", "claude_enabled": claude_client is not None, "yfinance_enabled": True, "analysis_version": "3.3.0 - YFinance", "indicators": ["SMA-100 Filter", "RSI + Volume", "MACD Crossover", "Bollinger Bands", "Money Flow Index (MFI)", "ADX (Trend Strength)", "ATR (Dynamic Stops)", "Rate of Change (ROC)", "Gap Analysis", "Relative Strength"]}
 
+app = app
