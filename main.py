@@ -13,6 +13,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="OptiMax API", version="3.3.0")
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 
 app.add_middleware(
     CORSMiddleware,
