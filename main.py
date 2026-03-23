@@ -64,8 +64,8 @@ def get_stock_data_alpha(symbol):
             return None
         data = response.json()
         if "Time Series (Daily)" not in data:
-    logger.error(f"Alpha Vantage response for {symbol}: {json.dumps(data)}")
-    return None
+            logger.error(f"Alpha Vantage response for {symbol}: {json.dumps(data)}")
+            return None
         time_series = data["Time Series (Daily)"]
         df = pd.DataFrame.from_dict(time_series, orient='index')
         df.index = pd.to_datetime(df.index)
