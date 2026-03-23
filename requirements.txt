@@ -9,3 +9,4 @@ anthropic
 pytz
 requests
 finnhub-python
+yfinance
