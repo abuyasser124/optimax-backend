@@ -335,6 +335,3 @@ def market_status():
     now_et = datetime.now(et)
     return {"market_open": is_market_open(), "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"), "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)", "total_stocks": len(SHARIAH_STOCKS), "cache_duration": f"{CACHE_DURATION} seconds (30 min)", "claude_enabled": claude_client is not None, "alpha_vantage_enabled": bool(ALPHA_VANTAGE_API_KEY), "analysis_version": "3.2.0 - Alpha Vantage", "scheduled_update": "Daily at 12:00 PM ET (8-9 PM Saudi)", "indicators": ["SMA-200 Filter", "RSI + Volume", "MACD Crossover", "Bollinger Bands", "Money Flow Index (MFI)", "ADX (Trend Strength)", "ATR (Dynamic Stops)", "Rate of Change (ROC)", "Gap Analysis", "Relative Strength"]}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
