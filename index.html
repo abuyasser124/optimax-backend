@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             min-height: 100vh;
             padding: 20px;
             color: #333;
@@ -29,7 +29,7 @@
             border-radius: 15px;
             padding: 25px;
             margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             text-align: center;
         }
 
@@ -44,12 +44,19 @@
             font-size: 1.1em;
         }
 
+        .credits {
+            color: #999;
+            font-size: 0.85em;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
         .search-box {
             background: white;
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         }
 
         .search-input-container {
@@ -97,7 +104,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         }
 
         .status-item {
@@ -128,7 +135,7 @@
             border-radius: 15px;
             padding: 60px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
         .loading-spinner {
@@ -159,13 +166,13 @@
             padding: 20px;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
             border-left: 5px solid #667eea;
         }
 
         .stock-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
         }
 
         .stock-header {
@@ -442,6 +449,7 @@
         <div class="header">
             <h1>📊 OptiMax</h1>
             <p>تحليل احترافي للأسهم الشرعية مدعوم بالذكاء الاصطناعي</p>
+            <div class="credits">تطوير: عبدالرحمن أبوحيمد أبوياسر + Claude AI</div>
         </div>
 
         <!-- Search Box -->
@@ -495,7 +503,7 @@
     </div>
 
     <script>
-        const API_URL = 'https://optimax-backend.onrender.com';
+        const API_URL = 'https://optimax-backend-git-main-abuyasser124s-projects.vercel.app';
 
         async function loadData() {
             const loading = document.getElementById('loading');
@@ -642,44 +650,6 @@
                         </div>
                     `;
                 }
-                // عرض الأخبار
-                if (data.news && data.news.length > 0) {
-                    analysisHTML += `
-                        <div class="detail-section">
-                            <div class="section-title">📰 آخر الأخبار</div>
-                    `;
-                    
-                    for (const newsItem of data.news) {
-                        const sentimentClass = newsItem.sentiment === 'positive' ? 'rating-positive' : 
-                                              newsItem.sentiment === 'negative' ? 'rating-negative' : 
-                                              'rating-neutral';
-                        const sentimentText = newsItem.sentiment === 'positive' ? 'إيجابي' : 
-                                             newsItem.sentiment === 'negative' ? 'سلبي' : 
-                                             'محايد';
-                        
-                        analysisHTML += `
-                            <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-right: 4px solid ${newsItem.sentiment === 'positive' ? '#10b981' : newsItem.sentiment === 'negative' ? '#ef4444' : '#f59e0b'};">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                    <span style="font-size: 1.2em;">${newsItem.emoji}</span>
-                                    <span class="${sentimentClass}" style="font-weight: bold; font-size: 0.9em;">
-                                        ${sentimentText}
-                                    </span>
-                                    <span style="color: #999; font-size: 0.85em; margin-right: auto;">
-                                        ${newsItem.time_ago}
-                                    </span>
-                                </div>
-                                <div style="font-weight: bold; color: #333; margin-bottom: 5px; line-height: 1.4;">
-                                    ${newsItem.title}
-                                </div>
-                                <div style="font-size: 0.85em; color: #666;">
-                                    ${newsItem.publisher}
-                                </div>
-                            </div>
-                        `;
-                    }
-                    
-                    analysisHTML += `</div>`;
-                }
 
                 analysisHTML += `
                     <div class="detail-section">
@@ -815,6 +785,7 @@
         function getSignalClass(signal) {
             const map = {
                 'Strong Buy': 'strong-buy',
+                'Super Strong Buy': 'strong-buy',
                 'Buy': 'buy',
                 'Hold': 'hold',
                 'Sell': 'sell',
@@ -825,6 +796,7 @@
 
         function getSignalArabic(signal) {
             const map = {
+                'Super Strong Buy': 'شراء قوي جداً ⚡',
                 'Strong Buy': 'شراء قوي',
                 'Buy': 'شراء',
                 'Hold': 'احتفاظ',
