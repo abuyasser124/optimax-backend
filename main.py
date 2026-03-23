@@ -54,18 +54,17 @@ def is_market_open():
     market_close = now_et.replace(hour=16, minute=0, second=0, microsecond=0)
     return market_open <= now_et <= market_close
 
-def get_stock_data_alpha(symbol):
+def get_stock_data_yf(symbol):
     try:
-        if not ALPHA_VANTAGE_API_KEY:
+        import yfinance as yf
+        stock = yf.Ticker(symbol)
+        df = stock.history(period="6mo")
+        if df.empty:
             return None
-        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&outputsize=compact&apikey={ALPHA_VANTAGE_API_KEY}"
-        response = requests.get(url, timeout=15)
-        if response.status_code != 200:
-            return None
-        data = response.json()
-        if "Time Series (Daily)" not in data:
-            logger.error(f"Alpha Vantage response for {symbol}: {json.dumps(data)}")
-            return None
+        return df
+    except Exception as e:
+        logger.error(f"YFinance error {symbol}: {e}")
+        return None
         time_series = data["Time Series (Daily)"]
         df = pd.DataFrame.from_dict(time_series, orient='index')
         df.index = pd.to_datetime(df.index)
@@ -242,7 +241,7 @@ def get_top_opportunities():
     for idx, (symbol, name) in enumerate(SHARIAH_STOCKS, 1):
         try:
             logger.info(f"Analyzing {idx}/{total}: {symbol}")
-            stock_data = get_stock_data_alpha(symbol)
+            stock_data = get_stock_data_yf(symbol)
             if stock_data is None or stock_data.empty or len(stock_data) < 200:
                 continue
             stock_data = calculate_indicators(stock_data)
@@ -291,7 +290,7 @@ def get_detailed_analysis(symbol: str):
     if not stock_info:
         raise HTTPException(status_code=404, detail="Stock not in Shariah-compliant list")
     try:
-        df = get_stock_data_alpha(symbol)
+        df = get_stock_data_yf(symbol)
         if df is None or df.empty:
             raise HTTPException(status_code=404, detail="No data available")
         df = calculate_indicators(df)
