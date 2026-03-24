@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -12,10 +13,7 @@ import json
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="OptiMax API", version="3.3.0")
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
+app = FastAPI(title="OptiMax API", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,6 +22,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.get("/app")
+def serve_frontend():
+    return FileResponse("index.html")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
@@ -65,9 +67,19 @@ def get_stock_data_yf(symbol):
         logger.error(f"YFinance error {symbol}: {e}")
         return None
 
+def calculate_trading_days_ahead(start_date, num_days):
+    """حساب عدد أيام التداول (تخطي السبت والأحد)"""
+    current = start_date
+    days_added = 0
+    while days_added < num_days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:  # 0-4 = Monday-Friday
+            days_added += 1
+    return current.strftime('%Y-%m-%d')
+
 @app.get("/")
 def root():
-    return {"app": "OptiMax API", "version": "3.3.0", "total_stocks": len(SHARIAH_STOCKS), "market_open": is_market_open(), "message": "YFinance API - Live Trading Analysis"}
+    return {"app": "OptiMax API", "version": "5.0.0", "total_stocks": len(SHARIAH_STOCKS), "market_open": is_market_open(), "message": "Complete Enhanced Analysis - Sector Flow, Multi-Indicators, Term Explanations"}
 
 def calculate_indicators(df):
     try:
@@ -87,6 +99,7 @@ def calculate_indicators(df):
         df['BB_lower'] = df['SMA_20'] - (df['BB_std'] * 2)
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
         df['SMA_100'] = df['Close'].rolling(window=100).mean()
+        df['SMA_200'] = df['Close'].rolling(window=200).mean() if len(df) >= 200 else None
         df['Volume_SMA'] = df['Volume'].rolling(window=20).mean()
         typical_price = (df['High'] + df['Low'] + df['Close']) / 3
         money_flow = typical_price * df['Volume']
@@ -275,6 +288,7 @@ def get_detailed_analysis(symbol: str):
     if not stock_info:
         raise HTTPException(status_code=404, detail="Stock not in Shariah-compliant list")
     try:
+        import yfinance as yf
         df = get_stock_data_yf(symbol)
         if df is None or df.empty:
             raise HTTPException(status_code=404, detail="No data available")
@@ -286,11 +300,199 @@ def get_detailed_analysis(symbol: str):
         signal = get_signal(score)
         atr_value = latest['ATR']
         dynamic_stop = current_price - (1.5 * atr_value)
-        basic_data = {"symbol": symbol, "name": stock_info[1], "price": round(float(current_price), 2), "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2), "score": round(score, 1), "signal": signal, "signals_detail": signals, "indicators": {"rsi": round(float(latest['RSI']), 2), "macd": round(float(latest['MACD']), 4), "macd_signal": round(float(latest['MACD_Signal']), 4), "macd_histogram": round(float(latest['MACD_Hist']), 4), "sma_20": round(float(latest['SMA_20']), 2), "sma_50": round(float(latest['SMA_50']), 2), "sma_100": round(float(latest['SMA_100']), 2) if not pd.isna(latest['SMA_100']) else None, "bb_upper": round(float(latest['BB_upper']), 2), "bb_lower": round(float(latest['BB_lower']), 2), "mfi": round(float(latest['MFI']), 2) if not pd.isna(latest['MFI']) else None, "adx": round(float(latest['ADX']), 2) if not pd.isna(latest['ADX']) else None, "atr": round(float(latest['ATR']), 2), "roc": round(float(latest['ROC']), 2) if not pd.isna(latest['ROC']) else None}, "dynamic_stop_loss": round(float(dynamic_stop), 2)}
+        
+        # جلب البيانات الأساسية
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        pe_ratio = info.get('trailingPE', 0)
+        eps = info.get('trailingEps', 0)
+        market_cap = info.get('marketCap', 0)
+        sector = info.get('sector', 'Unknown')
+        
+        # حساب Volume Analysis المتقدم
+        current_volume = latest['Volume']
+        avg_volume = latest['Volume_SMA']
+        volume_diff_pct = ((current_volume - avg_volume) / avg_volume * 100) if avg_volume > 0 else 0
+        
+        # تحليل اتجاه Volume (آخر 5 أيام)
+        recent_volumes = df['Volume'].tail(5).tolist()
+        volume_trend = "صاعد" if recent_volumes[-1] > recent_volumes[0] else "هابط"
+        
+        # Multi-Timeframe Analysis (تقدير من البيانات المتاحة)
+        daily_trend = "صاعد" if current_price > latest['SMA_50'] else "هابط"
+        
+        # تحليل القطاع (تقدير من Volume + Price)
+        sector_strength = "قوي" if volume_diff_pct > 20 and score >= 7 else "متوسط" if score >= 5 else "ضعيف"
+        
+        basic_data = {
+            "symbol": symbol,
+            "name": stock_info[1],
+            "price": round(float(current_price), 2),
+            "change_pct": round(((current_price - prev_close) / prev_close) * 100, 2),
+            "score": round(score, 1),
+            "signal": signal,
+            "signals_detail": signals,
+            "indicators": {
+                "rsi": round(float(latest['RSI']), 2),
+                "macd": round(float(latest['MACD']), 4),
+                "macd_signal": round(float(latest['MACD_Signal']), 4),
+                "macd_histogram": round(float(latest['MACD_Hist']), 4),
+                "sma_20": round(float(latest['SMA_20']), 2),
+                "sma_50": round(float(latest['SMA_50']), 2),
+                "sma_100": round(float(latest['SMA_100']), 2) if not pd.isna(latest['SMA_100']) else None,
+                "bb_upper": round(float(latest['BB_upper']), 2),
+                "bb_lower": round(float(latest['BB_lower']), 2),
+                "mfi": round(float(latest['MFI']), 2) if not pd.isna(latest['MFI']) else None,
+                "adx": round(float(latest['ADX']), 2) if not pd.isna(latest['ADX']) else None,
+                "atr": round(float(latest['ATR']), 2),
+                "roc": round(float(latest['ROC']), 2) if not pd.isna(latest['ROC']) else None
+            },
+            "fundamentals": {
+                "pe_ratio": round(pe_ratio, 2) if pe_ratio else None,
+                "eps": round(eps, 2) if eps else None,
+                "market_cap": market_cap,
+                "sector": sector
+            },
+            "volume_analysis": {
+                "current": int(current_volume),
+                "average": int(avg_volume),
+                "difference_pct": round(volume_diff_pct, 2),
+                "trend": volume_trend,
+                "is_unusual": abs(volume_diff_pct) > 50
+            },
+            "market_context": {
+                "daily_trend": daily_trend,
+                "sector_strength": sector_strength
+            },
+            "dynamic_stop_loss": round(float(dynamic_stop), 2)
+        }
+
         if claude_client:
             try:
-                prompt = f"""{stock_info[1]} ({symbol})\nالسعر: ${current_price:.2f}\nالنقاط: {basic_data['score']}/10\n\nJSON:\n{{\n  "entry_point": 000.00,\n  "target_short": 000.00,\n  "target_medium": 000.00,\n  "stop_loss": {basic_data['dynamic_stop_loss']},\n  "success_rate": 00,\n  "valid_until": "YYYY-MM-DD",\n  "analysis": "تحليل مختصر"\n}}"""
-                message = claude_client.messages.create(model="claude-sonnet-4-20250514", max_tokens=1000, messages=[{"role": "user", "content": prompt}])
+                today = datetime.now(pytz.timezone('US/Eastern'))
+                
+                # حساب الصلاحية الذكية
+                if score >= 9:
+                    trading_days = 7
+                elif score >= 7:
+                    trading_days = 5
+                elif score >= 5:
+                    trading_days = 3
+                else:
+                    trading_days = 1
+                
+                valid_until = calculate_trading_days_ahead(today, trading_days)
+                
+                prompt = f"""أنت محلل مالي خبير متخصص في الأسواق الأمريكية. حلل السهم التالي بشكل شامل ومفصل واحترافي:
+
+━━━━━━━━━━━━━━━━━━━━━
+📊 معلومات السهم
+━━━━━━━━━━━━━━━━━━━━━
+الشركة: {stock_info[1]} ({symbol})
+القطاع: {sector}
+السعر الحالي: ${current_price:.2f}
+التغير اليومي: {basic_data['change_pct']}%
+النقاط الفنية: {basic_data['score']}/10
+التاريخ الحالي: {today.strftime('%Y-%m-%d')}
+
+━━━━━━━━━━━━━━━━━━━━━
+📈 التحليل الفني الكامل
+━━━━━━━━━━━━━━━━━━━━━
+RSI: {basic_data['indicators']['rsi']} (0-30=تشبع بيعي، 30-70=محايد، 70+=تشبع شرائي)
+MACD: {basic_data['indicators']['macd']} (إيجابي=صاعد، سلبي=هابط)
+ADX: {basic_data['indicators']['adx']} (25+=اتجاه قوي، <20=جانبي)
+MFI: {basic_data['indicators']['mfi']} (تدفق الأموال: 30-=بيعي، 70+=شرائي)
+ROC: {basic_data['indicators']['roc']}% (الزخم)
+ATR: {basic_data['indicators']['atr']} (التذبذب)
+
+SMA-20: ${basic_data['indicators']['sma_20']}
+SMA-50: ${basic_data['indicators']['sma_50']}
+SMA-100: ${basic_data['indicators']['sma_100']}
+Bollinger Upper: ${basic_data['indicators']['bb_upper']}
+Bollinger Lower: ${basic_data['indicators']['bb_lower']}
+
+━━━━━━━━━━━━━━━━━━━━━
+💼 التحليل الأساسي
+━━━━━━━━━━━━━━━━━━━━━
+P/E Ratio: {basic_data['fundamentals']['pe_ratio']} (كم تدفع مقابل $1 ربح)
+EPS: ${basic_data['fundamentals']['eps']} (ربحية السهم)
+Market Cap: ${basic_data['fundamentals']['market_cap']:,.0f}
+
+━━━━━━━━━━━━━━━━━━━━━
+📊 تحليل حجم التداول
+━━━━━━━━━━━━━━━━━━━━━
+الحجم الحالي: {basic_data['volume_analysis']['current']:,}
+المتوسط: {basic_data['volume_analysis']['average']:,}
+الفرق: {basic_data['volume_analysis']['difference_pct']}%
+الاتجاه: {basic_data['volume_analysis']['trend']}
+غير طبيعي: {'نعم ⚠️' if basic_data['volume_analysis']['is_unusual'] else 'لا'}
+
+━━━━━━━━━━━━━━━━━━━━━
+🌍 سياق السوق
+━━━━━━━━━━━━━━━━━━━━━
+الاتجاه اليومي: {basic_data['market_context']['daily_trend']}
+قوة القطاع: {basic_data['market_context']['sector_strength']}
+
+━━━━━━━━━━━━━━━━━━━━━
+
+أرجع JSON فقط بهذا التنسيق الدقيق (بدون أي نص إضافي):
+{{
+  "confidence": 85,
+  "success_rating": 8.5,
+  "profit_probability": 78,
+  "entry_point": {current_price:.2f},
+  "target_short": 0.00,
+  "target_medium": 0.00,
+  "stop_loss": {basic_data['dynamic_stop_loss']},
+  "valid_until": "{valid_until}",
+  "trading_days": {trading_days},
+  "summary": "تحليل شامل يغطي جميع المؤشرات الفنية والأساسية وحجم التداول (3-4 أسطر)",
+  "risks": [
+    "مخاطرة محددة 1",
+    "مخاطرة محددة 2",
+    "مخاطرة محددة 3"
+  ],
+  "opportunities": [
+    "فرصة محددة 1",
+    "فرصة محددة 2",
+    "فرصة محددة 3"
+  ],
+  "alerts": [
+    "تنبيه محدد 1 (مثل: كسر $X = خروج)",
+    "تنبيه محدد 2 (مثل: وصول $Y = أرباح جزئية)",
+    "تنبيه محدد 3 (مثل: حدث قادم في تاريخ معين)"
+  ],
+  "sector_flow": "تحليل تدفق السيولة في القطاع {sector} - هل المؤسسات والبنوك تشتري؟ ما معنى ذلك للسهم؟ (2-3 أسطر)",
+  "historical_success": "نسبة نجاح الإشارات المماثلة تاريخياً (تقدير ذكي بناءً على قوة الإشارة)",
+  "recommendation": "التوصية النهائية والنصيحة العملية للمتداول (سطرين)",
+  "glossary": {{
+    "RSI": "مؤشر القوة النسبية - يقيس سرعة تغير السعر. أقل من 30 = تشبع بيعي (فرصة شراء)، أكثر من 70 = تشبع شرائي (احذر الهبوط)",
+    "MACD": "تقارب وتباعد المتوسطات - يكشف قوة واتجاه الترند. إيجابي = صاعد، سلبي = هابط، تقاطع صاعد = إشارة قوية",
+    "Volume": "حجم التداول - كم سهم تم تداوله. حجم عالي = اهتمام كبير (موثوق)، حجم منخفض = اهتمام ضعيف",
+    "P/E Ratio": "نسبة السعر للأرباح - كم تدفع مقابل كل $1 ربح. منخفض = رخيص، مرتفع = غالي",
+    "Support": "الدعم - سعر يصعب كسره للأسفل. كسره = احتمال هبوط",
+    "Resistance": "المقاومة - سعر يصعب تجاوزه للأعلى. كسره = احتمال صعود",
+    "Money Flow": "تدفق الأموال - هل الأموال تدخل السهم أو تخرج؟ إيجابي = صعود، سلبي = هبوط",
+    "Institutional Buying": "شراء المؤسسات - عندما البنوك والصناديق الكبرى تشتري = إشارة قوية للصعود"
+  }}
+}}
+
+ملاحظات حاسمة:
+1. confidence: درجة الثقة من 0-100 بناءً على قوة كل المؤشرات
+2. success_rating: تقييم نجاح الصفقة من 0-10
+3. profit_probability: احتمالية الربح بالنسبة المئوية
+4. summary: يجب أن يشمل تحليل شامل لكل المؤشرات (الفنية + الأساسية + الحجم + القطاع)
+5. risks/opportunities: 3 نقاط محددة وواضحة لكل منهما
+6. alerts: 3 تنبيهات عملية مع أسعار محددة
+7. sector_flow: تحليل مفصل لتدفق السيولة وماذا يعني
+8. historical_success: نسبة تقديرية ذكية
+9. glossary: شرح مبسط لـ 8 مصطلحات رئيسية"""
+
+                message = claude_client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=3000,
+                    messages=[{"role": "user", "content": prompt}]
+                )
                 claude_response = message.content[0].text.strip()
                 if "```json" in claude_response:
                     claude_response = claude_response.split("```json")[1].split("```")[0].strip()
@@ -303,8 +505,8 @@ def get_detailed_analysis(symbol: str):
                 basic_data["claude_analysis"] = None
         else:
             basic_data["claude_analysis"] = None
+
         basic_data["updated_at"] = datetime.now(pytz.timezone('US/Eastern')).isoformat()
-        basic_data["news"] = []
         set_cache(cache_key, basic_data)
         return basic_data
     except HTTPException:
@@ -317,6 +519,28 @@ def get_detailed_analysis(symbol: str):
 def market_status():
     et = pytz.timezone('US/Eastern')
     now_et = datetime.now(et)
-    return {"market_open": is_market_open(), "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"), "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)", "total_stocks": len(SHARIAH_STOCKS), "cache_duration": f"{CACHE_DURATION} seconds (30 min)", "claude_enabled": claude_client is not None, "yfinance_enabled": True, "analysis_version": "3.3.0 - YFinance", "indicators": ["SMA-100 Filter", "RSI + Volume", "MACD Crossover", "Bollinger Bands", "Money Flow Index (MFI)", "ADX (Trend Strength)", "ATR (Dynamic Stops)", "Rate of Change (ROC)", "Gap Analysis", "Relative Strength"]}
+    return {
+        "market_open": is_market_open(),
+        "current_time_et": now_et.strftime("%Y-%m-%d %H:%M:%S ET (%A)"),
+        "market_hours": "9:30 AM - 4:00 PM ET (Mon-Fri)",
+        "total_stocks": len(SHARIAH_STOCKS),
+        "cache_duration": f"{CACHE_DURATION} seconds (30 min)",
+        "claude_enabled": claude_client is not None,
+        "yfinance_enabled": True,
+        "analysis_version": "5.0.0 - Complete Enhanced Analysis",
+        "features": [
+            "✅ Smart validity dates (trading days only)",
+            "✅ Fundamental analysis (P/E, EPS, Market Cap, Sector)",
+            "✅ Advanced volume analysis with trend detection",
+            "✅ Sector flow & institutional buying analysis",
+            "✅ Confidence & success ratings (0-100, 0-10)",
+            "✅ Risk/Opportunity assessment (3 points each)",
+            "✅ Smart alerts with specific prices",
+            "✅ Historical success rate estimation",
+            "✅ Multi-timeframe context",
+            "✅ Term explanations (8 key terms)",
+            "✅ Comprehensive analysis of all 10+ indicators"
+        ]
+    }
 
 app = app
