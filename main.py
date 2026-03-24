@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="5.0.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,7 +64,6 @@ def calculate_trading_days_ahead(start_date, num_days):
     
     while days_added < num_days:
         current += timedelta(days=1)
-        # Only count weekdays (0=Monday, 4=Friday)
         if current.weekday() < 5:
             days_added += 1
     
@@ -92,6 +91,93 @@ def get_stock_data_yf(symbol, period="3mo"):
         print(f"Error fetching {symbol}: {str(e)}")
         return None
 
+def calculate_obv(df):
+    """Calculate On-Balance Volume"""
+    obv = [0]
+    for i in range(1, len(df)):
+        if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
+            obv.append(obv[-1] + df['Volume'].iloc[i])
+        elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
+            obv.append(obv[-1] - df['Volume'].iloc[i])
+        else:
+            obv.append(obv[-1])
+    return obv
+
+def calculate_stochastic(df, period=14):
+    """Calculate Stochastic Oscillator"""
+    low_min = df['Low'].rolling(window=period).min()
+    high_max = df['High'].rolling(window=period).max()
+    
+    k = 100 * ((df['Close'] - low_min) / (high_max - low_min))
+    d = k.rolling(window=3).mean()
+    
+    return k, d
+
+def calculate_ema(series, period):
+    """Calculate Exponential Moving Average"""
+    return series.ewm(span=period, adjust=False).mean()
+
+def detect_candlestick_pattern(df):
+    """Detect candlestick patterns"""
+    if len(df) < 2:
+        return "غير محدد"
+    
+    latest = df.iloc[-1]
+    prev = df.iloc[-2]
+    
+    open_p = latest['Open']
+    close = latest['Close']
+    high = latest['High']
+    low = latest['Low']
+    
+    body = abs(close - open_p)
+    range_size = high - low
+    
+    if range_size == 0:
+        return "غير محدد"
+    
+    lower_shadow = min(open_p, close) - low
+    upper_shadow = high - max(open_p, close)
+    
+    # Hammer
+    if lower_shadow > (2 * body) and upper_shadow < body and close > open_p:
+        return "صاعد"
+    
+    # Shooting Star
+    if upper_shadow > (2 * body) and lower_shadow < body and close < open_p:
+        return "هابط"
+    
+    # Bullish Engulfing
+    if (close > open_p and prev['Close'] < prev['Open'] and 
+        close > prev['Open'] and open_p < prev['Close']):
+        return "صاعد"
+    
+    # Bearish Engulfing
+    if (close < open_p and prev['Close'] > prev['Open'] and 
+        close < prev['Open'] and open_p > prev['Close']):
+        return "هابط"
+    
+    # Doji
+    if body < (range_size * 0.1):
+        return "محايد"
+    
+    return "محايد"
+
+def calculate_volume_profile(df):
+    """Calculate volume profile strength"""
+    if len(df) < 20:
+        return "محايد"
+    
+    recent_vol = df['Volume'].tail(5).mean()
+    avg_vol = df['Volume'].mean()
+    
+    if recent_vol > avg_vol * 1.5:
+        return "قوي"
+    elif recent_vol < avg_vol * 0.5:
+        return "ضعيف"
+    else:
+        return "متوسط"
+
 def calculate_indicators(hist):
     """Calculate technical indicators"""
     df = hist.copy()
@@ -109,10 +195,12 @@ def calculate_indicators(hist):
     df['MACD'] = exp1 - exp2
     df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     
-    # Moving Averages
+    # Moving Averages (SMA and EMA)
     df['SMA_20'] = df['Close'].rolling(window=20).mean()
     df['SMA_50'] = df['Close'].rolling(window=50).mean()
     df['SMA_100'] = df['Close'].rolling(window=100).mean() if len(df) >= 100 else None
+    df['EMA_9'] = calculate_ema(df['Close'], 9)
+    df['EMA_21'] = calculate_ema(df['Close'], 21)
     
     # Bollinger Bands
     df['BB_Middle'] = df['Close'].rolling(window=20).mean()
@@ -156,16 +244,78 @@ def calculate_indicators(hist):
     # ROC (Rate of Change)
     df['ROC'] = ((df['Close'] - df['Close'].shift(12)) / df['Close'].shift(12)) * 100
     
+    # OBV
+    df['OBV'] = calculate_obv(df)
+    
+    # Stochastic
+    df['Stoch_K'], df['Stoch_D'] = calculate_stochastic(df)
+    
     return df
 
+def calculate_confirmation_signals(indicators):
+    """Calculate confirmation signals (0-4)"""
+    latest = indicators.iloc[-1]
+    prev = indicators.iloc[-2] if len(indicators) > 1 else latest
+    
+    confirmations = {}
+    positive_count = 0
+    
+    # 1. OBV Trend
+    if len(indicators) >= 5:
+        obv_trend = latest['OBV'] > indicators['OBV'].iloc[-5]
+        confirmations['obv'] = "صاعد" if obv_trend else "هابط"
+        if obv_trend:
+            positive_count += 1
+    else:
+        confirmations['obv'] = "غير محدد"
+    
+    # 2. Stochastic
+    stoch_k = latest['Stoch_K']
+    if pd.notna(stoch_k):
+        if stoch_k < 20:
+            confirmations['stochastic'] = "تشبع بيعي (فرصة)"
+            positive_count += 1
+        elif stoch_k > 80:
+            confirmations['stochastic'] = "تشبع شرائي (حذر)"
+        else:
+            confirmations['stochastic'] = "محايد"
+            positive_count += 0.5
+    else:
+        confirmations['stochastic'] = "غير محدد"
+    
+    # 3. Candlestick Pattern
+    pattern = detect_candlestick_pattern(indicators)
+    confirmations['candlestick'] = pattern
+    if pattern == "صاعد":
+        positive_count += 1
+    elif pattern == "محايد":
+        positive_count += 0.5
+    
+    # 4. Volume Profile
+    vol_profile = calculate_volume_profile(indicators)
+    confirmations['volume_profile'] = vol_profile
+    if vol_profile == "قوي":
+        positive_count += 1
+    elif vol_profile == "متوسط":
+        positive_count += 0.5
+    
+    # Verdict
+    if positive_count >= 3:
+        verdict = "ادخل الآن!"
+    elif positive_count >= 2:
+        verdict = "راقب - تحتاج تأكيد"
+    else:
+        verdict = "لا تدخل!"
+    
+    return {
+        'signals': confirmations,
+        'positive_count': round(positive_count, 1),
+        'total': 4,
+        'verdict': verdict
+    }
+
 def calculate_score(indicators, info):
-    """
-    Calculate comprehensive score from 0-13
-    - 10 points from technical indicators
-    - +1 for strong volume (> -20%)
-    - +1 for positive momentum (MACD > 0)
-    - +1 for good timing (RSI rising and > 30)
-    """
+    """Calculate comprehensive score from 0-13"""
     score = 0
     latest = indicators.iloc[-1]
     prev = indicators.iloc[-2] if len(indicators) > 1 else latest
@@ -214,7 +364,7 @@ def calculate_score(indicators, info):
     
     # ATR for volatility (0-0.5 points)
     atr = latest['ATR']
-    if atr < price * 0.05:  # Low volatility
+    if atr < price * 0.05:
         score += 0.5
     
     # ROC momentum (0-0.5 points)
@@ -225,21 +375,21 @@ def calculate_score(indicators, info):
     # Price gaps (0-0.5 points)
     if len(indicators) > 1:
         gap = abs(latest['Open'] - prev['Close']) / prev['Close']
-        if gap < 0.02:  # No significant gap
+        if gap < 0.02:
             score += 0.5
     
-    # === NEW: +3 bonus points for entry signals ===
+    # === +3 bonus points for entry signals ===
     
-    # +1 for strong volume (not too weak)
+    # +1 for strong volume
     volume_diff_pct = ((current_volume - avg_volume) / avg_volume) * 100
-    if volume_diff_pct > -20:  # Volume not critically low
+    if volume_diff_pct > -20:
         score += 1
     
-    # +1 for positive momentum (MACD > 0)
+    # +1 for positive momentum
     if macd > 0:
         score += 1
     
-    # +1 for good timing (RSI rising and healthy)
+    # +1 for good timing
     rsi_rising = rsi > prev['RSI'] if len(indicators) > 1 else False
     if rsi > 30 and rsi_rising:
         score += 1
@@ -247,9 +397,7 @@ def calculate_score(indicators, info):
     return round(score, 1)
 
 def get_signal(score):
-    """
-    Convert score (0-13) to trading signal
-    """
+    """Convert score (0-13) to trading signal"""
     if score >= 11:
         return "Super Strong Buy"
     elif score >= 9:
@@ -264,16 +412,14 @@ def get_signal(score):
 def is_market_open():
     """Check if US market is currently open"""
     now = datetime.now()
-    # US Eastern Time market hours: 9:30 AM - 4:00 PM
-    # Simplified check - just see if it's a weekday
     return now.weekday() < 5
 
 @app.get("/")
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "5.0.0",
-        "description": "Shariah-compliant stock analysis with enhanced Claude AI insights",
+        "version": "6.0.0",
+        "description": "Enhanced Shariah-compliant stock analysis with advanced confirmation signals",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for a specific stock"
@@ -320,7 +466,6 @@ async def get_top_opportunities(limit: int = 10):
             print(f"Error analyzing {symbol}: {str(e)}")
             continue
     
-    # Sort by score
     opportunities.sort(key=lambda x: x['score'], reverse=True)
     
     result = {
@@ -352,30 +497,26 @@ async def get_detailed_analysis(symbol: str):
     
     indicators = calculate_indicators(data['history'])
     score = calculate_score(indicators, data['info'])
+    confirmation = calculate_confirmation_signals(indicators)
     
     latest = indicators.iloc[-1]
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
     change_pct = (change / prev_close) * 100
     
-    # Volume analysis
     current_volume = int(latest['Volume'])
     avg_volume = int(indicators['Volume'].tail(20).mean())
     volume_diff = current_volume - avg_volume
     volume_diff_pct = ((current_volume - avg_volume) / avg_volume) * 100
     
-    # Fundamental data
     info = data['info']
     pe_ratio = info.get('trailingPE', info.get('forwardPE'))
     eps = info.get('trailingEps', info.get('forwardEps'))
     market_cap = info.get('marketCap', 0)
     sector = info.get('sector', 'Unknown')
     
-    # Advanced volume analysis
     volume_trend = "صاعد" if current_volume > avg_volume else "هابط"
     is_unusual_volume = bool(abs(volume_diff_pct) > 50)
-    
-    # Market context
     daily_trend = "صاعد" if change_pct > 0 else "هابط"
     
     analysis_data = {
@@ -386,6 +527,7 @@ async def get_detailed_analysis(symbol: str):
         "change_pct": round(change_pct, 2),
         "score": score,
         "signal": get_signal(score),
+        "confirmation": confirmation,
         "indicators": {
             "rsi": round(latest['RSI'], 2),
             "macd": round(latest['MACD'], 4),
@@ -393,13 +535,17 @@ async def get_detailed_analysis(symbol: str):
             "sma_20": round(latest['SMA_20'], 2),
             "sma_50": round(latest['SMA_50'], 2),
             "sma_100": round(latest['SMA_100'], 2) if latest['SMA_100'] and not pd.isna(latest['SMA_100']) else None,
+            "ema_9": round(latest['EMA_9'], 2),
+            "ema_21": round(latest['EMA_21'], 2),
             "bb_upper": round(latest['BB_Upper'], 2),
             "bb_middle": round(latest['BB_Middle'], 2),
             "bb_lower": round(latest['BB_Lower'], 2),
             "mfi": round(latest['MFI'], 2),
             "adx": round(latest['ADX'], 2),
             "atr": round(latest['ATR'], 2),
-            "roc": round(latest['ROC'], 2)
+            "roc": round(latest['ROC'], 2),
+            "stoch_k": round(latest['Stoch_K'], 2) if pd.notna(latest['Stoch_K']) else None,
+            "stoch_d": round(latest['Stoch_D'], 2) if pd.notna(latest['Stoch_D']) else None
         },
         "fundamentals": {
             "pe_ratio": round(pe_ratio, 2) if pe_ratio else None,
@@ -421,11 +567,9 @@ async def get_detailed_analysis(symbol: str):
         }
     }
     
-    # Get Claude AI analysis
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
         
-        # Determine trading days based on score
         if score >= 9:
             trading_days = 7
         elif score >= 7:
@@ -450,7 +594,14 @@ async def get_detailed_analysis(symbol: str):
 - MACD: {latest['MACD']:.4f}
 - ADX: {latest['ADX']:.2f}
 - MFI: {latest['MFI']:.2f}
-- ROC: {latest['ROC']:.2f}%
+- Stochastic K: {latest['Stoch_K']:.2f if pd.notna(latest['Stoch_K']) else 'N/A'}
+
+إشارات التأكيد ({confirmation['positive_count']}/4):
+- OBV: {confirmation['signals']['obv']}
+- Stochastic: {confirmation['signals']['stochastic']}
+- Candlestick: {confirmation['signals']['candlestick']}
+- Volume Profile: {confirmation['signals']['volume_profile']}
+- الحكم: {confirmation['verdict']}
 
 البيانات الأساسية:
 - P/E Ratio: {pe_ratio if pe_ratio else 'N/A'}
@@ -462,12 +613,6 @@ async def get_detailed_analysis(symbol: str):
 - الحجم الحالي: {current_volume:,}
 - المتوسط: {avg_volume:,}
 - الفرق: {volume_diff_pct:+.2f}%
-- الاتجاه: {volume_trend}
-- غير طبيعي: {"نعم" if is_unusual_volume else "لا"}
-
-السياق:
-- الاتجاه اليومي: {daily_trend}
-- التاريخ: {today.strftime('%Y-%m-%d')}
 
 أعطني تحليلاً شاملاً بصيغة JSON التالية فقط (بدون ```json):
 {{
@@ -480,7 +625,7 @@ async def get_detailed_analysis(symbol: str):
   "stop_loss": {data['price'] * 0.94},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "تحليل شامل يشمل المؤشرات الفنية والأساسية وحجم التداول...",
+  "summary": "تحليل شامل يشمل المؤشرات الفنية وإشارات التأكيد...",
   "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
   "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
   "alerts": ["تنبيه 1", "تنبيه 2", "تنبيه 3"],
@@ -490,12 +635,12 @@ async def get_detailed_analysis(symbol: str):
   "glossary": {{
     "RSI": "مؤشر القوة النسبية - يقيس...",
     "MACD": "تقارب وتباعد المتوسطات - يكشف...",
-    "Volume": "حجم التداول - كم سهم...",
-    "P/E Ratio": "نسبة السعر للأرباح...",
-    "Support": "الدعم - سعر يصعب...",
-    "Resistance": "المقاومة - سعر يصعب...",
-    "Money Flow": "تدفق الأموال - هل الأموال...",
-    "Institutional Buying": "شراء المؤسسات - عندما البنوك..."
+    "OBV": "حجم التوازن - يتتبع تدفق الأموال...",
+    "Stochastic": "مذبذب عشوائي - يكشف التشبع...",
+    "Candlestick": "الشموع اليابانية - أنماط السعر...",
+    "Volume Profile": "ملف الحجم - توزيع السيولة...",
+    "EMA": "المتوسط المتحرك الأسي - أسرع من SMA...",
+    "Support": "الدعم - سعر يصعب كسره للأسفل..."
   }}
 }}"""
 
@@ -507,7 +652,6 @@ async def get_detailed_analysis(symbol: str):
         
         response_text = message.content[0].text.strip()
         
-        # Clean response
         if response_text.startswith("```json"):
             response_text = response_text[7:]
         if response_text.startswith("```"):
