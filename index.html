@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OptiMax - تحليل الأسهم الشرعية</title>
+    <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22background_color%22%3A%22%23f5f5f5%22%2C%22dir%22%3A%22rtl%22%2C%22display%22%3A%22standalone%22%2C%22name%22%3A%22OptiMax%22%2C%22orientation%22%3A%22any%22%2C%22scope%22%3A%22%2F%22%2C%22short_name%22%3A%22OptiMax%22%2C%22start_url%22%3A%22%2F%22%2C%22theme_color%22%3A%22%23667eea%22%2C%22id%22%3A%22OptiMax%22%2C%22description%22%3A%22%D8%AA%D8%AD%D9%84%D9%8A%D9%84%20%D8%A7%D8%AD%D8%AA%D8%B1%D8%A7%D9%81%D9%8A%20%D9%84%D9%84%D8%A3%D8%B3%D9%87%D9%85%20%D8%A7%D9%84%D8%B4%D8%B1%D8%B9%D9%8A%D8%A9%20%D8%A7%D9%84%D8%A3%D9%85%D8%B1%D9%8A%D9%83%D9%8A%D8%A9%20%D9%85%D8%AF%D8%B9%D9%88%D9%85%20%D8%A8%D8%A7%D9%84%D8%B0%D9%83%D8%A7%D8%A1%20%D8%A7%D9%84%D8%A7%D8%B5%D8%B7%D9%86%D8%A7%D8%B9%D9%8A%22%7D">
+    <meta name="theme-color" content="#667eea">
+    <meta name="description" content="تحليل احترافي للأسهم الشرعية الأمريكية مدعوم بالذكاء الاصطناعي">
     <style>
         * {
             margin: 0;
@@ -231,6 +234,11 @@
             font-weight: bold;
             font-size: 0.9em;
             text-align: center;
+        }
+
+        .super-strong-buy {
+            background: #059669;
+            color: white;
         }
 
         .strong-buy {
@@ -666,7 +674,7 @@
                             </div>
                             <div class="info-item">
                                 <span class="info-label">النقاط</span>
-                                <span class="info-value">${stock.score}/10</span>
+                                <span class="info-value">${stock.score}/13</span>
                             </div>
                             <div class="info-item">
                                 <span class="info-label">RSI</span>
@@ -956,7 +964,7 @@
                         <div class="targets-grid">
                             <div class="target-box">
                                 <div class="target-label">النقاط الإجمالية</div>
-                                <div class="target-value">${data.score}/10</div>
+                                <div class="target-value">${data.score}/13</div>
                             </div>
                             <div class="target-box">
                                 <div class="target-label">التوصية</div>
@@ -988,8 +996,8 @@
 
         function getSignalClass(signal) {
             const map = {
+                'Super Strong Buy': 'super-strong-buy',
                 'Strong Buy': 'strong-buy',
-                'Super Strong Buy': 'strong-buy',
                 'Buy': 'buy',
                 'Hold': 'hold',
                 'Sell': 'sell',
@@ -1000,10 +1008,10 @@
 
         function getSignalArabic(signal) {
             const map = {
-                'Super Strong Buy': 'شراء قوي جداً ⚡',
+                'Super Strong Buy': 'شراء قوي جداً ⚡⚡⚡',
                 'Strong Buy': 'شراء قوي',
-                'Buy': 'شراء',
-                'Hold': 'احتفاظ',
+                'Buy': 'راقب',
+                'Hold': 'لا تدخل',
                 'Sell': 'بيع',
                 'Strong Sell': 'بيع قوي'
             };
