@@ -351,6 +351,86 @@
             gap: 10px;
         }
 
+        .confirmation-section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #fff3cd;
+            border-radius: 15px;
+            border-right: 4px solid #f59e0b;
+        }
+
+        .confirmation-signals {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .signal-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .signal-item.positive {
+            border-left: 4px solid #10b981;
+        }
+
+        .signal-item.negative {
+            border-left: 4px solid #ef4444;
+        }
+
+        .signal-item.neutral {
+            border-left: 4px solid #f59e0b;
+        }
+
+        .signal-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .signal-value {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .verdict-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 15px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+
+        .verdict-score {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .verdict-text {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .verdict-text.enter {
+            color: #10b981;
+        }
+
+        .verdict-text.watch {
+            color: #f59e0b;
+        }
+
+        .verdict-text.avoid {
+            color: #ef4444;
+        }
+
         .confidence-box {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -572,7 +652,7 @@
                 flex-direction: column;
             }
 
-            .confidence-box, .targets-grid, .indicators-grid {
+            .confidence-box, .targets-grid, .indicators-grid, .confirmation-signals {
                 grid-template-columns: 1fr;
             }
         }
@@ -740,10 +820,49 @@
                 document.getElementById('modalSubtitle').textContent = `السعر: $${data.price} | التغير: ${data.change_pct >= 0 ? '+' : ''}${data.change_pct}%`;
 
                 let analysisHTML = '';
+
+                if (data.confirmation) {
+                    const conf = data.confirmation;
+                    let verdictClass = 'watch';
+                    if (conf.verdict.includes('ادخل')) verdictClass = 'enter';
+                    else if (conf.verdict.includes('لا تدخل')) verdictClass = 'avoid';
+
+                    analysisHTML += `
+                        <div class="confirmation-section">
+                            <div class="section-title">🔍 إشارات التأكيد</div>
+                            
+                            <div class="confirmation-signals">
+                                <div class="signal-item ${conf.signals.obv === 'صاعد' ? 'positive' : 'negative'}">
+                                    <div class="signal-label">OBV</div>
+                                    <div class="signal-value">${conf.signals.obv}</div>
+                                </div>
+                                <div class="signal-item ${conf.signals.stochastic.includes('فرصة') ? 'positive' : conf.signals.stochastic.includes('حذر') ? 'negative' : 'neutral'}">
+                                    <div class="signal-label">Stochastic</div>
+                                    <div class="signal-value">${conf.signals.stochastic}</div>
+                                </div>
+                                <div class="signal-item ${conf.signals.candlestick === 'صاعد' ? 'positive' : conf.signals.candlestick === 'هابط' ? 'negative' : 'neutral'}">
+                                    <div class="signal-label">Candlestick</div>
+                                    <div class="signal-value">${conf.signals.candlestick}</div>
+                                </div>
+                                <div class="signal-item ${conf.signals.volume_profile === 'قوي' ? 'positive' : conf.signals.volume_profile === 'ضعيف' ? 'negative' : 'neutral'}">
+                                    <div class="signal-label">Volume Profile</div>
+                                    <div class="signal-value">${conf.signals.volume_profile}</div>
+                                </div>
+                            </div>
+
+                            <div class="verdict-box">
+                                <div class="verdict-score">${conf.positive_count}/${conf.total}</div>
+                                <div class="verdict-text ${verdictClass}">${conf.verdict}</div>
+                            </div>
+                        </div>
+
+                        <div class="divider"></div>
+                    `;
+                }
                 
                 if (data.claude_analysis) {
                     const ca = data.claude_analysis;
-                    analysisHTML = `
+                    analysisHTML += `
                         <div class="analysis-section">
                             <div class="section-title">🎯 رأي Claude AI</div>
                             
@@ -906,8 +1025,12 @@
                                 <div class="indicator-value">$${data.indicators.sma_50}</div>
                             </div>
                             <div class="indicator-box">
-                                <div class="indicator-label">SMA-100</div>
-                                <div class="indicator-value">$${data.indicators.sma_100 || 'N/A'}</div>
+                                <div class="indicator-label">EMA-9</div>
+                                <div class="indicator-value">$${data.indicators.ema_9}</div>
+                            </div>
+                            <div class="indicator-box">
+                                <div class="indicator-label">EMA-21</div>
+                                <div class="indicator-value">$${data.indicators.ema_21}</div>
                             </div>
                         </div>
                     </div>
