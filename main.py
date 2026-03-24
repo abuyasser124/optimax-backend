@@ -353,19 +353,19 @@ def get_detailed_analysis(symbol: str):
                 "market_cap": market_cap,
                 "sector": sector
             },
-            "volume_analysis": {
-                "current": int(current_volume),
-                "average": int(avg_volume),
-                "difference_pct": round(volume_diff_pct, 2),
-                "trend": volume_trend,
-                "is_unusual": abs(volume_diff_pct) > 50
-            },
-            "market_context": {
-                "daily_trend": daily_trend,
-                "sector_strength": sector_strength
-            },
-            "dynamic_stop_loss": round(float(dynamic_stop), 2)
-        }
+        "volume_analysis": {
+            "current": int(current_volume),
+            "average": int(avg_volume),
+            "difference_pct": round(volume_diff_pct, 2),
+            "trend": volume_trend,
+            "is_unusual": bool(abs(volume_diff_pct) > 50)
+        },
+        "market_context": {
+            "daily_trend": daily_trend,
+            "sector_strength": sector_strength
+        },
+        "dynamic_stop_loss": round(float(dynamic_stop), 2)
+    }
 
         if claude_client:
             try:
