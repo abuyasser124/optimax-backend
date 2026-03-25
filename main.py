@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.2.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -328,11 +328,11 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.2.0",
-        "description": "Enhanced with price filtering and accurate target calculation",
+        "version": "6.3.0",
+        "description": "Enhanced with organized display and any-stock analysis",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
-            "/analysis/{symbol}": "Get detailed analysis for a specific stock"
+            "/analysis/{symbol}": "Get detailed analysis for any stock"
         }
     }
 
@@ -380,18 +380,18 @@ async def get_top_opportunities(limit: int = 10):
 @app.get("/analysis/{symbol}")
 async def get_detailed_analysis(symbol: str):
     symbol = symbol.upper()
-    if symbol not in SHARIAH_STOCKS:
-        raise HTTPException(status_code=404, detail=f"Stock {symbol} not found in Shariah-compliant list")
+    
     cache_key = f"analysis_{symbol}"
     if cache_key in cache:
         return cache[cache_key]
+    
     data = get_stock_data_yf(symbol)
     if not data:
         raise HTTPException(status_code=404, detail=f"Could not fetch data for {symbol}")
+    
     indicators = calculate_indicators(data['history'])
     score = calculate_score(indicators, data['info'])
     confirmation = calculate_confirmation_signals(indicators)
-    
     targets = calculate_targets(data['price'], confirmation['positive_count'])
     
     latest = indicators.iloc[-1]
@@ -410,6 +410,7 @@ async def get_detailed_analysis(symbol: str):
     volume_trend = "صاعد" if current_volume > avg_volume else "هابط"
     is_unusual_volume = bool(abs(volume_diff_pct) > 50)
     daily_trend = "صاعد" if change_pct > 0 else "هابط"
+    
     analysis_data = {
         "symbol": symbol,
         "name": data['name'],
@@ -458,65 +459,60 @@ async def get_detailed_analysis(symbol: str):
             "sector_strength": "متوسط"
         }
     }
+    
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        
         if confirmation['positive_count'] >= 3:
             trading_days = 7
         elif confirmation['positive_count'] >= 2:
             trading_days = 5
         else:
             trading_days = 3
+        
         today = datetime.now()
         valid_until = calculate_trading_days_ahead(today, trading_days)
-        stoch_k_display = f"{latest['Stoch_K']:.2f}" if pd.notna(latest['Stoch_K']) else 'N/A'
         
-        prompt = f"""أنت محلل مالي. قم بتحليل السهم بصيغة JSON فقط بدون أي نص إضافي:
+        prompt = f"""أنت محلل مالي خبير. قم بتحليل السهم وإعطاء JSON فقط بدون أي نص إضافي:
 
-السهم: {symbol}
+السهم: {symbol} - {data['name']}
 النقاط: {score}/13
 التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
-الاتجاه: {targets['direction']}
 
-الأهداف المحسوبة (لا تغيرها):
-- نقطة الدخول: ${targets['entry']}
-- الهدف القصير: ${targets['target_short']}
-- الهدف المتوسط: ${targets['target_medium']}
-- وقف الخسارة: ${targets['stop_loss']}
+لا تحسب الأهداف - فقط قدم تحليلك.
 
-أعطني JSON فقط (استخدم الأهداف أعلاه كما هي):
+أعطني JSON فقط (بدون ```json):
 {{
   "confidence": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
   "success_rating": {round(confirmation['positive_count'] * 2.5, 1)},
   "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
-  "entry_point": {targets['entry']},
-  "target_short": {targets['target_short']},
-  "target_medium": {targets['target_medium']},
-  "stop_loss": {targets['stop_loss']},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "ملخص يتوافق مع {confirmation['verdict']}...",
-  "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
-  "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
-  "alerts": ["تنبيه 1", "تنبيه 2", "تنبيه 3"],
-  "sector_flow": "تحليل السيولة...",
-  "historical_success": "نسبة النجاح...",
-  "recommendation": "توصية تتوافق مع {confirmation['verdict']}",
+  "summary": "ملخص يتوافق مع {confirmation['verdict']} - تحليل شامل للوضع الحالي...",
+  "risks": ["مخاطرة محددة 1", "مخاطرة محددة 2", "مخاطرة محددة 3"],
+  "opportunities": ["فرصة محددة 1", "فرصة محددة 2", "فرصة محددة 3"],
+  "alerts": ["تنبيه عملي 1", "تنبيه عملي 2", "تنبيه عملي 3"],
+  "sector_flow": "تحليل تدفق السيولة في القطاع والاتجاه العام...",
+  "historical_success": "نسبة النجاح التاريخية للإشارات المماثلة...",
+  "recommendation": "توصية نهائية واضحة تتوافق مع {confirmation['verdict']}",
   "glossary": {{
-    "RSI": "مؤشر القوة النسبية...",
-    "MACD": "تقارب المتوسطات...",
-    "OBV": "حجم التوازن...",
-    "Stochastic": "مذبذب عشوائي...",
-    "Candlestick": "الشموع اليابانية...",
-    "Volume Profile": "ملف الحجم...",
-    "EMA": "المتوسط الأسي...",
-    "Support": "الدعم..."
+    "RSI": "مؤشر القوة النسبية - يقيس زخم حركة السعر",
+    "MACD": "تقارب وتباعد المتوسطات - يكشف التغيرات في القوة",
+    "OBV": "حجم التوازن - يتتبع تدفق الأموال",
+    "Stochastic": "مذبذب عشوائي - يكشف التشبع",
+    "Candlestick": "الشموع اليابانية - أنماط السعر",
+    "Volume Profile": "ملف الحجم - توزيع السيولة",
+    "EMA": "المتوسط المتحرك الأسي - أسرع استجابة",
+    "Support": "الدعم - مستوى الارتداد"
   }}
 }}"""
+
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
+        
         response_text = message.content[0].text.strip()
         if response_text.startswith("```json"):
             response_text = response_text[7:]
@@ -525,12 +521,15 @@ async def get_detailed_analysis(symbol: str):
         if response_text.endswith("```"):
             response_text = response_text[:-3]
         response_text = response_text.strip()
+        
         import json
         claude_analysis = json.loads(response_text)
         analysis_data["claude_analysis"] = claude_analysis
+        
     except Exception as e:
         print(f"Claude API error: {str(e)}")
         analysis_data["claude_analysis"] = None
+    
     cache[cache_key] = analysis_data
     return analysis_data
 
