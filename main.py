@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.1.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,29 +30,7 @@ SHARIAH_STOCKS = [
     "XEL", "TEAM", "IDXX", "ANSS", "CSGP", "FANG", "ON", "ZS", "TTWO", "DDOG",
     "BIIB", "ILMN", "CDW", "GFS", "WBD", "MDB", "SMCI", "CRWD", "WBA", "ZM",
     "MRNA", "ALGN", "ENPH", "DLTR", "LCID", "RIVN", "BMRN", "NTES", "JD", "BIDU",
-    "PDD", "BILI", "LI", "XPEV", "NIO", "BABA", "TME", "VIPS", "WB", "DOYU",
-    "IQ", "HUYA", "MOMO", "YY", "ATHM", "BZUN", "TIGR", "FUTU", "DADA", "KC",
-    "CBAT", "VNET", "SOHU", "SINA", "JOBS", "CAAS", "SOS", "SXTC", "LX", "TANH",
-    "AIHS", "RENN", "CNIT", "BEST", "QTT", "CANG", "MOXC", "CJJD", "RERE", "ACST",
-    "JAGX", "ATNM", "AKER", "PULM", "CLSD", "GNUS", "GBNH", "EDSA", "EAST", "LTRX",
-    "ALPP", "SIOX", "MDMP", "VYNE", "TXMD", "OPGN", "ATOS", "OCGN", "CODX", "INO",
-    "NVAX", "VXRT", "BCEL", "MBRX", "ADTX", "ADMP", "KTOV", "TBLT", "APDN", "IBIO",
-    "GNPX", "APTO", "BNGO", "OBSV", "ONTX", "NVCN", "DTIL", "PRQR", "TRVN", "TCON",
-    "EIGR", "LIFE", "DMTK", "CYCN", "CLBS", "PBLA", "CYTO", "QURE", "AFMD", "TNXP",
-    "AGRX", "ARTL", "LJPC", "EYEN", "PETQ", "MDWD", "GLYC", "HGEN", "XERS", "KDMN",
-    "RLMD", "SVRA", "CLOV", "BBIG", "MULN", "GREE", "ZKIN", "HUSA", "HMBL", "SNDL",
-    "EXPR", "BBBY", "KOSS", "NAKD", "CTRM", "TOPS", "SHIP", "GLBS", "BIOC", "INND",
-    "INTV", "RGBP", "TSNP", "OZSC", "HCMC", "SNGX", "RLFTF", "ALYI", "TLSS", "CLIS",
-    "PASO", "PHIL", "SING", "HMNY", "BOTY", "FORZ", "VPER", "TCKR", "MJWL", "HEMP",
-    "HIPH", "USMJ", "CBDS", "GRCU", "MDCN", "MYEC", "PAOG", "PRPM", "RXMD", "SANP",
-    "SEEK", "SKYF", "SSOK", "SWRM", "TLSS", "BTCS", "MARA", "RIOT", "EBON", "SOS",
-    "CAN", "EQOS", "ARBKF", "HUTMF", "HIVE", "DMGI", "BITF", "HUT", "CLSK", "APLD",
-    "GREE", "WULF", "CIFR", "CORZ", "IREN", "BTDR", "SDIG", "SOLV", "BTCS", "MGI",
-    "CNET", "FRMO", "GBBK", "BBBY", "OSTK", "NEGG", "GSBC", "ALOT", "NCTY", "XELA",
-    "BBAI", "FFIE", "DTC", "MULN", "CEI", "NILE", "GFAI", "MMMB", "CARV", "GOEV",
-    "WKHS", "RIDE", "FSR", "ENVX", "QS", "BLNK", "CHPT", "EVGO", "DRIV", "PSNY",
-    "NKLA", "HYLN", "ARVL", "LEV", "LCID", "RIVN", "PTRA", "LAZR", "VLDR", "OUST",
-    "LIDR", "INVZ", "TALK", "AEYE", "INDI", "RAAC", "AMGN"
+    "PDD", "BILI", "LI", "XPEV", "NIO", "BABA", "TME", "VIPS", "AMGN"
 ]
 
 def calculate_trading_days_ahead(start_date, num_days):
@@ -70,11 +48,17 @@ def get_stock_data_yf(symbol, period="3mo"):
         hist = stock.history(period=period)
         if hist.empty:
             return None
+        
+        current_price = hist['Close'].iloc[-1]
+        
+        if current_price < 1:
+            return None
+        
         info = stock.info
         return {
             'symbol': symbol,
             'name': info.get('longName', symbol),
-            'price': round(hist['Close'].iloc[-1], 2),
+            'price': round(current_price, 2),
             'history': hist,
             'info': info
         }
@@ -282,8 +266,6 @@ def calculate_score(indicators, info):
         if gap < 0.02:
             score += 0.5
     volume_diff_pct = ((current_volume - avg_volume) / avg_volume) * 100
-    
-    # عقوبة الحجم الضعيف
     if volume_diff_pct < -70:
         score -= 3
     elif volume_diff_pct < -50:
@@ -292,14 +274,39 @@ def calculate_score(indicators, info):
         score -= 1
     elif volume_diff_pct > -20:
         score += 1
-    
     if macd > 0:
         score += 1
     rsi_rising = rsi > prev['RSI'] if len(indicators) > 1 else False
     if rsi > 30 and rsi_rising:
         score += 1
-    
     return max(0, round(score, 1))
+
+def calculate_targets(price, confirmation_score):
+    """حساب الأهداف بناءً على إشارات التأكيد"""
+    if confirmation_score >= 3:
+        return {
+            'entry': round(price, 2),
+            'target_short': round(price * 1.08, 2),
+            'target_medium': round(price * 1.15, 2),
+            'stop_loss': round(price * 0.94, 2),
+            'direction': 'صاعد'
+        }
+    elif confirmation_score >= 2:
+        return {
+            'entry': round(price, 2),
+            'target_short': round(price * 1.05, 2),
+            'target_medium': round(price * 1.10, 2),
+            'stop_loss': round(price * 0.96, 2),
+            'direction': 'محايد'
+        }
+    else:
+        return {
+            'entry': round(price, 2),
+            'target_short': round(price * 0.95, 2),
+            'target_medium': round(price * 0.90, 2),
+            'stop_loss': round(price * 1.05, 2),
+            'direction': 'هابط'
+        }
 
 def get_signal(score):
     if score >= 11:
@@ -321,8 +328,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.1.0",
-        "description": "Enhanced Shariah-compliant stock analysis with volume penalty system",
+        "version": "6.2.0",
+        "description": "Enhanced with price filtering and accurate target calculation",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for a specific stock"
@@ -384,6 +391,9 @@ async def get_detailed_analysis(symbol: str):
     indicators = calculate_indicators(data['history'])
     score = calculate_score(indicators, data['info'])
     confirmation = calculate_confirmation_signals(indicators)
+    
+    targets = calculate_targets(data['price'], confirmation['positive_count'])
+    
     latest = indicators.iloc[-1]
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
@@ -409,6 +419,7 @@ async def get_detailed_analysis(symbol: str):
         "score": score,
         "signal": get_signal(score),
         "confirmation": confirmation,
+        "targets": targets,
         "indicators": {
             "rsi": round(latest['RSI'], 2),
             "macd": round(latest['MACD'], 4),
@@ -449,69 +460,58 @@ async def get_detailed_analysis(symbol: str):
     }
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        
         if confirmation['positive_count'] >= 3:
             trading_days = 7
         elif confirmation['positive_count'] >= 2:
             trading_days = 5
         else:
             trading_days = 3
-        
         today = datetime.now()
         valid_until = calculate_trading_days_ahead(today, trading_days)
-        
         stoch_k_display = f"{latest['Stoch_K']:.2f}" if pd.notna(latest['Stoch_K']) else 'N/A'
         
-        direction = "صاعد" if confirmation['positive_count'] >= 2.5 else "هابط"
-        
-        prompt = f"""أنت محلل مالي خبير. قم بتحليل السهم بصيغة JSON فقط:
+        prompt = f"""أنت محلل مالي. قم بتحليل السهم بصيغة JSON فقط بدون أي نص إضافي:
 
-السهم: {symbol} - {data['name']}
-السعر: ${data['price']}
-التغير: {change_pct:+.2f}%
-
+السهم: {symbol}
 النقاط: {score}/13
-إشارات التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
+التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
+الاتجاه: {targets['direction']}
 
-المؤشرات:
-- RSI: {latest['RSI']:.2f}
-- MACD: {latest['MACD']:.4f}
-- OBV: {confirmation['signals']['obv']}
-- Stochastic: {confirmation['signals']['stochastic']}
-- Volume: {volume_diff_pct:+.2f}%
+الأهداف المحسوبة (لا تغيرها):
+- نقطة الدخول: ${targets['entry']}
+- الهدف القصير: ${targets['target_short']}
+- الهدف المتوسط: ${targets['target_medium']}
+- وقف الخسارة: ${targets['stop_loss']}
 
-الاتجاه المتوقع: {direction}
-
-أعطني JSON فقط (بدون ```json):
+أعطني JSON فقط (استخدم الأهداف أعلاه كما هي):
 {{
   "confidence": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
   "success_rating": {round(confirmation['positive_count'] * 2.5, 1)},
   "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
-  "entry_point": {data['price']},
-  "target_short": {data['price'] * (1.08 if direction == 'صاعد' else 0.95)},
-  "target_medium": {data['price'] * (1.15 if direction == 'صاعد' else 0.90)},
-  "stop_loss": {data['price'] * (0.94 if direction == 'صاعد' else 1.05)},
+  "entry_point": {targets['entry']},
+  "target_short": {targets['target_short']},
+  "target_medium": {targets['target_medium']},
+  "stop_loss": {targets['stop_loss']},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "ملخص يتوافق مع الاتجاه {direction} وإشارات التأكيد...",
+  "summary": "ملخص يتوافق مع {confirmation['verdict']}...",
   "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
-  "opportunities": ["فرصة 1" إذا {direction}، "فرصة 2", "فرصة 3"],
+  "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
   "alerts": ["تنبيه 1", "تنبيه 2", "تنبيه 3"],
-  "sector_flow": "تحليل السيولة في القطاع...",
-  "historical_success": "نسبة النجاح التاريخية للإشارات المماثلة...",
-  "recommendation": "توصية تتوافق مع {confirmation['verdict']} و{direction}",
+  "sector_flow": "تحليل السيولة...",
+  "historical_success": "نسبة النجاح...",
+  "recommendation": "توصية تتوافق مع {confirmation['verdict']}",
   "glossary": {{
-    "RSI": "مؤشر القوة النسبية - يقيس...",
-    "MACD": "تقارب وتباعد المتوسطات...",
-    "OBV": "حجم التوازن - تدفق الأموال...",
+    "RSI": "مؤشر القوة النسبية...",
+    "MACD": "تقارب المتوسطات...",
+    "OBV": "حجم التوازن...",
     "Stochastic": "مذبذب عشوائي...",
     "Candlestick": "الشموع اليابانية...",
     "Volume Profile": "ملف الحجم...",
-    "EMA": "المتوسط المتحرك الأسي...",
+    "EMA": "المتوسط الأسي...",
     "Support": "الدعم..."
   }}
 }}"""
-
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
