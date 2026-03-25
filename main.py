@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,12 +48,9 @@ def get_stock_data_yf(symbol, period="3mo"):
         hist = stock.history(period=period)
         if hist.empty:
             return None
-        
         current_price = hist['Close'].iloc[-1]
-        
         if current_price < 1:
             return None
-        
         info = stock.info
         return {
             'symbol': symbol,
@@ -279,10 +276,17 @@ def calculate_score(indicators, info):
     rsi_rising = rsi > prev['RSI'] if len(indicators) > 1 else False
     if rsi > 30 and rsi_rising:
         score += 1
+    confirmation = calculate_confirmation_signals(indicators)
+    conf_score = confirmation['positive_count']
+    if conf_score < 1.5:
+        score -= 4
+    elif conf_score < 2.5:
+        score -= 2
+    elif conf_score >= 3:
+        score += 1
     return max(0, round(score, 1))
 
 def calculate_targets(price, confirmation_score):
-    """حساب الأهداف بناءً على إشارات التأكيد"""
     if confirmation_score >= 3:
         return {
             'entry': round(price, 2),
@@ -328,8 +332,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.0",
-        "description": "Enhanced with organized display and any-stock analysis",
+        "version": "6.3.1",
+        "description": "Enhanced scoring with confirmation penalties",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -380,20 +384,16 @@ async def get_top_opportunities(limit: int = 10):
 @app.get("/analysis/{symbol}")
 async def get_detailed_analysis(symbol: str):
     symbol = symbol.upper()
-    
     cache_key = f"analysis_{symbol}"
     if cache_key in cache:
         return cache[cache_key]
-    
     data = get_stock_data_yf(symbol)
     if not data:
         raise HTTPException(status_code=404, detail=f"Could not fetch data for {symbol}")
-    
     indicators = calculate_indicators(data['history'])
     score = calculate_score(indicators, data['info'])
     confirmation = calculate_confirmation_signals(indicators)
     targets = calculate_targets(data['price'], confirmation['positive_count'])
-    
     latest = indicators.iloc[-1]
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
@@ -410,7 +410,6 @@ async def get_detailed_analysis(symbol: str):
     volume_trend = "صاعد" if current_volume > avg_volume else "هابط"
     is_unusual_volume = bool(abs(volume_diff_pct) > 50)
     daily_trend = "صاعد" if change_pct > 0 else "هابط"
-    
     analysis_data = {
         "symbol": symbol,
         "name": data['name'],
@@ -459,20 +458,16 @@ async def get_detailed_analysis(symbol: str):
             "sector_strength": "متوسط"
         }
     }
-    
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        
         if confirmation['positive_count'] >= 3:
             trading_days = 7
         elif confirmation['positive_count'] >= 2:
             trading_days = 5
         else:
             trading_days = 3
-        
         today = datetime.now()
         valid_until = calculate_trading_days_ahead(today, trading_days)
-        
         prompt = f"""أنت محلل مالي خبير. قم بتحليل السهم وإعطاء JSON فقط بدون أي نص إضافي:
 
 السهم: {symbol} - {data['name']}
@@ -506,13 +501,11 @@ async def get_detailed_analysis(symbol: str):
     "Support": "الدعم - مستوى الارتداد"
   }}
 }}"""
-
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}]
         )
-        
         response_text = message.content[0].text.strip()
         if response_text.startswith("```json"):
             response_text = response_text[7:]
@@ -521,15 +514,12 @@ async def get_detailed_analysis(symbol: str):
         if response_text.endswith("```"):
             response_text = response_text[:-3]
         response_text = response_text.strip()
-        
         import json
         claude_analysis = json.loads(response_text)
         analysis_data["claude_analysis"] = claude_analysis
-        
     except Exception as e:
         print(f"Claude API error: {str(e)}")
         analysis_data["claude_analysis"] = None
-    
     cache[cache_key] = analysis_data
     return analysis_data
 
