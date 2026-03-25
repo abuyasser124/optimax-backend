@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.2")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.3")
 
 app.add_middleware(
     CORSMiddleware,
@@ -125,17 +125,43 @@ def calculate_volume_profile(df):
     else:
         return "متوسط"
 
-def calculate_support_resistance(hist):
-    df = hist.tail(60)
-    highs = df.nlargest(3, 'High')['High'].tolist()
-    lows = df.nsmallest(3, 'Low')['Low'].tolist()
+def calculate_support_resistance_advanced(hist, current_price):
+    df = hist.tail(90)
+    peaks = []
+    for i in range(2, len(df) - 2):
+        if (df['High'].iloc[i] > df['High'].iloc[i-1] and 
+            df['High'].iloc[i] > df['High'].iloc[i-2] and
+            df['High'].iloc[i] > df['High'].iloc[i+1] and 
+            df['High'].iloc[i] > df['High'].iloc[i+2]):
+            level = df['High'].iloc[i]
+            touches = 0
+            for j in range(len(df)):
+                if abs(df['High'].iloc[j] - level) / level < 0.02:
+                    touches += 1
+            peaks.append({'price': level, 'strength': touches, 'distance': abs(current_price - level)})
+    troughs = []
+    for i in range(2, len(df) - 2):
+        if (df['Low'].iloc[i] < df['Low'].iloc[i-1] and 
+            df['Low'].iloc[i] < df['Low'].iloc[i-2] and
+            df['Low'].iloc[i] < df['Low'].iloc[i+1] and 
+            df['Low'].iloc[i] < df['Low'].iloc[i+2]):
+            level = df['Low'].iloc[i]
+            touches = 0
+            for j in range(len(df)):
+                if abs(df['Low'].iloc[j] - level) / level < 0.02:
+                    touches += 1
+            troughs.append({'price': level, 'strength': touches, 'distance': abs(current_price - level)})
+    peaks.sort(key=lambda x: (x['strength'], -x['distance']), reverse=True)
+    troughs.sort(key=lambda x: (x['strength'], -x['distance']), reverse=True)
+    resistances = [p['price'] for p in peaks if p['price'] > current_price][:3]
+    supports = [t['price'] for t in troughs if t['price'] < current_price][:3]
     return {
-        'resistance_1': round(highs[0], 2) if len(highs) > 0 else None,
-        'resistance_2': round(highs[1], 2) if len(highs) > 1 else None,
-        'resistance_3': round(highs[2], 2) if len(highs) > 2 else None,
-        'support_1': round(lows[0], 2) if len(lows) > 0 else None,
-        'support_2': round(lows[1], 2) if len(lows) > 1 else None,
-        'support_3': round(lows[2], 2) if len(lows) > 2 else None
+        'resistance_1': round(resistances[0], 2) if len(resistances) > 0 else None,
+        'resistance_2': round(resistances[1], 2) if len(resistances) > 1 else None,
+        'resistance_3': round(resistances[2], 2) if len(resistances) > 2 else None,
+        'support_1': round(supports[0], 2) if len(supports) > 0 else None,
+        'support_2': round(supports[1], 2) if len(supports) > 1 else None,
+        'support_3': round(supports[2], 2) if len(supports) > 2 else None
     }
 
 def calculate_indicators(hist):
@@ -299,29 +325,38 @@ def calculate_score(indicators, info):
         score += 1
     return max(0, round(score, 1))
 
-def calculate_targets(price, confirmation_score):
+def calculate_targets_advanced(price, confirmation_score, atr, support_resistance):
     if confirmation_score >= 3:
+        target_short = support_resistance.get('resistance_1') or round(price + (atr * 2), 2)
+        target_medium = support_resistance.get('resistance_2') or round(price + (atr * 3), 2)
+        stop_loss = support_resistance.get('support_1') or round(price - (atr * 1.5), 2)
         return {
             'entry': round(price, 2),
-            'target_short': round(price * 1.08, 2),
-            'target_medium': round(price * 1.15, 2),
-            'stop_loss': round(price * 0.94, 2),
+            'target_short': round(target_short, 2),
+            'target_medium': round(target_medium, 2),
+            'stop_loss': round(stop_loss, 2),
             'direction': 'صاعد'
         }
     elif confirmation_score >= 2:
+        target_short = round(price + (atr * 1.5), 2)
+        target_medium = round(price + (atr * 2.5), 2)
+        stop_loss = round(price - (atr * 1.2), 2)
         return {
             'entry': round(price, 2),
-            'target_short': round(price * 1.05, 2),
-            'target_medium': round(price * 1.10, 2),
-            'stop_loss': round(price * 0.96, 2),
+            'target_short': target_short,
+            'target_medium': target_medium,
+            'stop_loss': stop_loss,
             'direction': 'محايد'
         }
     else:
+        target_short = support_resistance.get('resistance_1') or round(price + (atr * 1), 2)
+        target_medium = support_resistance.get('resistance_2') or round(price + (atr * 2), 2)
+        stop_loss = support_resistance.get('support_1') or round(price - (atr * 1.5), 2)
         return {
             'entry': round(price, 2),
-            'target_short': round(price * 1.05, 2),
-            'target_medium': round(price * 1.10, 2),
-            'stop_loss': round(price * 0.95, 2),
+            'target_short': target_short,
+            'target_medium': target_medium,
+            'stop_loss': stop_loss,
             'direction': 'هابط'
         }
 
@@ -345,8 +380,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.2",
-        "description": "Fixed targets for weak stocks + support/resistance levels",
+        "version": "6.3.3",
+        "description": "Advanced support/resistance + dynamic targets based on ATR",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -406,9 +441,10 @@ async def get_detailed_analysis(symbol: str):
     indicators = calculate_indicators(data['history'])
     score = calculate_score(indicators, data['info'])
     confirmation = calculate_confirmation_signals(indicators)
-    targets = calculate_targets(data['price'], confirmation['positive_count'])
-    support_resistance = calculate_support_resistance(data['history'])
+    support_resistance = calculate_support_resistance_advanced(data['history'], data['price'])
     latest = indicators.iloc[-1]
+    atr = latest['ATR']
+    targets = calculate_targets_advanced(data['price'], confirmation['positive_count'], atr, support_resistance)
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
     change_pct = (change / prev_close) * 100
