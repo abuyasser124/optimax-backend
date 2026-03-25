@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.1")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.2")
 
 app.add_middleware(
     CORSMiddleware,
@@ -306,9 +306,9 @@ def calculate_targets(price, confirmation_score):
     else:
         return {
             'entry': round(price, 2),
-            'target_short': round(price * 0.95, 2),
-            'target_medium': round(price * 0.90, 2),
-            'stop_loss': round(price * 1.05, 2),
+            'target_short': round(price * 1.05, 2),
+            'target_medium': round(price * 1.10, 2),
+            'stop_loss': round(price * 0.95, 2),
             'direction': 'هابط'
         }
 
@@ -332,8 +332,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.1",
-        "description": "Enhanced scoring with confirmation penalties",
+        "version": "6.3.2",
+        "description": "Fixed targets for weak stocks - realistic stop loss",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
