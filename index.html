@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptiMax - تحليل الأسهم الشرعية</title>
+    <title>OptiMax v6.3 - تحليل الأسهم الشرعية</title>
     <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22background_color%22%3A%22%23f5f5f5%22%2C%22dir%22%3A%22rtl%22%2C%22display%22%3A%22standalone%22%2C%22name%22%3A%22OptiMax%22%2C%22orientation%22%3A%22any%22%2C%22scope%22%3A%22%2F%22%2C%22short_name%22%3A%22OptiMax%22%2C%22start_url%22%3A%22%2F%22%2C%22theme_color%22%3A%22%23667eea%22%2C%22id%22%3A%22OptiMax%22%2C%22description%22%3A%22%D8%AA%D8%AD%D9%84%D9%8A%D9%84%20%D8%A7%D8%AD%D8%AA%D8%B1%D8%A7%D9%81%D9%8A%20%D9%84%D9%84%D8%A3%D8%B3%D9%87%D9%85%20%D8%A7%D9%84%D8%B4%D8%B1%D8%B9%D9%8A%D8%A9%20%D8%A7%D9%84%D8%A3%D9%85%D8%B1%D9%8A%D9%83%D9%8A%D8%A9%20%D9%85%D8%AF%D8%B9%D9%88%D9%85%20%D8%A8%D8%A7%D9%84%D8%B0%D9%83%D8%A7%D8%A1%20%D8%A7%D9%84%D8%A7%D8%B5%D8%B7%D9%86%D8%A7%D8%B9%D9%8A%22%7D">
     <meta name="theme-color" content="#667eea">
-    <meta name="description" content="تحليل احترافي للأسهم الشرعية الأمريكية مدعوم بالذكاء الاصطناعي">
+    <meta name="description" content="تحليل احترافي للأسهم مدعوم بالذكاء الاصطناعي - OptiMax v6.3">
     <style>
         * {
             margin: 0;
@@ -45,6 +45,17 @@
         .header p {
             color: #666;
             font-size: 1.1em;
+        }
+
+        .version {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-top: 10px;
+            font-weight: bold;
         }
 
         .credits {
@@ -97,6 +108,13 @@
         .search-btn:hover {
             background: #764ba2;
             transform: translateY(-2px);
+        }
+
+        .search-hint {
+            color: #999;
+            font-size: 0.85em;
+            margin-top: 10px;
+            text-align: center;
         }
 
         .status-bar {
@@ -333,12 +351,37 @@
             padding: 30px;
         }
 
-        .analysis-section {
-            margin-bottom: 30px;
-            padding: 25px;
-            background: #f8f9fa;
+        .summary-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
             border-radius: 15px;
-            border-right: 4px solid #667eea;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .summary-score {
+            font-size: 3em;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+
+        .summary-signal {
+            font-size: 1.5em;
+            font-weight: bold;
+            padding: 10px 30px;
+            border-radius: 25px;
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            margin-top: 10px;
+        }
+
+        .confirmation-section {
+            background: #fff3cd;
+            padding: 25px;
+            border-radius: 15px;
+            border-right: 4px solid #f59e0b;
+            margin-bottom: 25px;
         }
 
         .section-title {
@@ -349,14 +392,6 @@
             display: flex;
             align-items: center;
             gap: 10px;
-        }
-
-        .confirmation-section {
-            margin-bottom: 30px;
-            padding: 25px;
-            background: #fff3cd;
-            border-radius: 15px;
-            border-right: 4px solid #f59e0b;
         }
 
         .confirmation-signals {
@@ -429,6 +464,14 @@
 
         .verdict-text.avoid {
             color: #ef4444;
+        }
+
+        .analysis-section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-right: 4px solid #667eea;
         }
 
         .confidence-box {
@@ -662,7 +705,8 @@
     <div class="container">
         <div class="header">
             <h1>📊 OptiMax</h1>
-            <p>تحليل احترافي للأسهم الشرعية مدعوم بالذكاء الاصطناعي</p>
+            <p>تحليل احترافي للأسهم مدعوم بالذكاء الاصطناعي</p>
+            <span class="version">v6.3.0</span>
             <div class="credits">تطوير: عبدالرحمن أبوحيمد أبوياسر + Claude AI</div>
         </div>
 
@@ -672,11 +716,12 @@
                     type="text" 
                     id="searchInput" 
                     class="search-input" 
-                    placeholder="ابحث عن شركة بالرمز (مثال: AAPL, MSFT, TSLA...)"
+                    placeholder="ابحث عن أي سهم بالرمز (AAPL, MSFT, TSLA...)"
                     onkeypress="if(event.key === 'Enter') searchStock()"
                 >
                 <button class="search-btn" onclick="searchStock()">🔍 تحليل</button>
             </div>
+            <div class="search-hint">💡 يمكنك تحليل أي سهم - حتى خارج القائمة الشرعية</div>
         </div>
 
         <div class="status-bar">
@@ -787,7 +832,7 @@
         async function searchStock() {
             const symbol = document.getElementById('searchInput').value.trim().toUpperCase();
             if (!symbol) {
-                alert('الرجاء إدخال رمز الشركة');
+                alert('الرجاء إدخال رمز السهم');
                 return;
             }
             showDetails(symbol);
@@ -809,7 +854,7 @@
                 const response = await fetch(`${API_URL}/analysis/${symbol}`);
                 if (!response.ok) {
                     if (response.status === 404) {
-                        throw new Error('هذا السهم غير موجود في قائمة الأسهم الشرعية');
+                        throw new Error('لم يتم العثور على بيانات لهذا السهم');
                     }
                     throw new Error('فشل في جلب التحليل');
                 }
@@ -819,7 +864,13 @@
                 document.getElementById('modalTitle').textContent = `${data.symbol} - ${data.name}`;
                 document.getElementById('modalSubtitle').textContent = `السعر: $${data.price} | التغير: ${data.change_pct >= 0 ? '+' : ''}${data.change_pct}%`;
 
-                let analysisHTML = '';
+                let analysisHTML = `
+                    <div class="summary-section">
+                        <h2>📈 ملخص التقييم</h2>
+                        <div class="summary-score">${data.score}/13</div>
+                        <div class="summary-signal">${getSignalArabic(data.signal)}</div>
+                    </div>
+                `;
 
                 if (data.confirmation) {
                     const conf = data.confirmation;
@@ -855,14 +906,41 @@
                                 <div class="verdict-text ${verdictClass}">${conf.verdict}</div>
                             </div>
                         </div>
+                    `;
+                }
 
-                        <div class="divider"></div>
+                if (data.targets) {
+                    analysisHTML += `
+                        <div class="analysis-section">
+                            <div class="section-title">🎯 التوصيات والأهداف</div>
+                            
+                            <div class="targets-grid">
+                                <div class="target-box">
+                                    <div class="target-label">نقطة الدخول</div>
+                                    <div class="target-value">$${data.targets.entry}</div>
+                                </div>
+                                <div class="target-box">
+                                    <div class="target-label">الهدف القصير</div>
+                                    <div class="target-value positive">$${data.targets.target_short}</div>
+                                </div>
+                                <div class="target-box">
+                                    <div class="target-label">الهدف المتوسط</div>
+                                    <div class="target-value positive">$${data.targets.target_medium}</div>
+                                </div>
+                                <div class="target-box">
+                                    <div class="target-label">وقف الخسارة</div>
+                                    <div class="target-value negative">$${data.targets.stop_loss}</div>
+                                </div>
+                            </div>
+                        </div>
                     `;
                 }
                 
                 if (data.claude_analysis) {
                     const ca = data.claude_analysis;
                     analysisHTML += `
+                        <div class="divider"></div>
+
                         <div class="analysis-section">
                             <div class="section-title">🎯 رأي Claude AI</div>
                             
@@ -884,39 +962,6 @@
                             <div class="summary-text">
                                 <strong>📝 الملخص:</strong><br>
                                 ${ca.summary}
-                            </div>
-                        </div>
-
-                        <div class="divider"></div>
-
-                        <div class="analysis-section">
-                            <div class="section-title">🎯 التوصيات والأهداف</div>
-                            
-                            <div class="targets-grid">
-                                <div class="target-box">
-                                    <div class="target-label">نقطة الدخول</div>
-                                    <div class="target-value positive">$${ca.entry_point}</div>
-                                </div>
-                                <div class="target-box">
-                                    <div class="target-label">الهدف القصير</div>
-                                    <div class="target-value positive">$${ca.target_short}</div>
-                                </div>
-                                <div class="target-box">
-                                    <div class="target-label">الهدف المتوسط</div>
-                                    <div class="target-value positive">$${ca.target_medium}</div>
-                                </div>
-                                <div class="target-box">
-                                    <div class="target-label">وقف الخسارة</div>
-                                    <div class="target-value negative">$${ca.stop_loss}</div>
-                                </div>
-                                <div class="target-box">
-                                    <div class="target-label">صالح حتى</div>
-                                    <div class="target-value">${ca.valid_until}</div>
-                                </div>
-                                <div class="target-box">
-                                    <div class="target-label">أيام تداول</div>
-                                    <div class="target-value">${ca.trading_days} أيام</div>
-                                </div>
                             </div>
 
                             <div class="summary-text">
@@ -967,20 +1012,6 @@
                             <div class="section-title">📊 النسبة التاريخية</div>
                             <div class="summary-text">
                                 ${ca.historical_success}
-                            </div>
-                        </div>
-
-                        <div class="divider"></div>
-
-                        <div class="analysis-section">
-                            <div class="section-title">📖 شرح المصطلحات</div>
-                            <div class="glossary-grid">
-                                ${Object.entries(ca.glossary).map(([term, def]) => `
-                                    <div class="glossary-item">
-                                        <div class="glossary-term">${term}</div>
-                                        <div class="glossary-definition">${def}</div>
-                                    </div>
-                                `).join('')}
                             </div>
                         </div>
                     `;
@@ -1081,25 +1112,25 @@
                         </div>
                         ${data.volume_analysis.is_unusual ? '<div class="summary-text" style="background:#fff3cd;color:#856404;">⚠️ <strong>تحذير:</strong> حجم تداول غير طبيعي - راقب التلاعب المحتمل!</div>' : ''}
                     </div>
+                `;
 
-                    <div class="analysis-section">
-                        <div class="section-title">📈 ملخص التقييم</div>
-                        <div class="targets-grid">
-                            <div class="target-box">
-                                <div class="target-label">النقاط الإجمالية</div>
-                                <div class="target-value">${data.score}/13</div>
-                            </div>
-                            <div class="target-box">
-                                <div class="target-label">التوصية</div>
-                                <div class="target-value">
-                                    <span class="signal-badge ${getSignalClass(data.signal)}">
-                                        ${getSignalArabic(data.signal)}
-                                    </span>
-                                </div>
+                if (data.claude_analysis && data.claude_analysis.glossary) {
+                    analysisHTML += `
+                        <div class="divider"></div>
+
+                        <div class="analysis-section">
+                            <div class="section-title">📖 شرح المصطلحات</div>
+                            <div class="glossary-grid">
+                                ${Object.entries(data.claude_analysis.glossary).map(([term, def]) => `
+                                    <div class="glossary-item">
+                                        <div class="glossary-term">${term}</div>
+                                        <div class="glossary-definition">${def}</div>
+                                    </div>
+                                `).join('')}
                             </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                }
 
                 modalBody.innerHTML = analysisHTML;
 
@@ -1123,8 +1154,7 @@
                 'Strong Buy': 'strong-buy',
                 'Buy': 'buy',
                 'Hold': 'hold',
-                'Sell': 'sell',
-                'Strong Sell': 'sell'
+                'Sell': 'sell'
             };
             return map[signal] || 'hold';
         }
@@ -1135,8 +1165,7 @@
                 'Strong Buy': 'شراء قوي',
                 'Buy': 'راقب',
                 'Hold': 'لا تدخل',
-                'Sell': 'بيع',
-                'Strong Sell': 'بيع قوي'
+                'Sell': 'بيع'
             };
             return map[signal] || signal;
         }
