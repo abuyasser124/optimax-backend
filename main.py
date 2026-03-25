@@ -8,7 +8,7 @@ import anthropic
 import os
 from cachetools import TTLCache
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.0.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -282,14 +282,24 @@ def calculate_score(indicators, info):
         if gap < 0.02:
             score += 0.5
     volume_diff_pct = ((current_volume - avg_volume) / avg_volume) * 100
-    if volume_diff_pct > -20:
+    
+    # عقوبة الحجم الضعيف
+    if volume_diff_pct < -70:
+        score -= 3
+    elif volume_diff_pct < -50:
+        score -= 2
+    elif volume_diff_pct < -30:
+        score -= 1
+    elif volume_diff_pct > -20:
         score += 1
+    
     if macd > 0:
         score += 1
     rsi_rising = rsi > prev['RSI'] if len(indicators) > 1 else False
     if rsi > 30 and rsi_rising:
         score += 1
-    return round(score, 1)
+    
+    return max(0, round(score, 1))
 
 def get_signal(score):
     if score >= 11:
@@ -311,8 +321,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.0.0",
-        "description": "Enhanced Shariah-compliant stock analysis with advanced confirmation signals",
+        "version": "6.1.0",
+        "description": "Enhanced Shariah-compliant stock analysis with volume penalty system",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for a specific stock"
@@ -439,78 +449,69 @@ async def get_detailed_analysis(symbol: str):
     }
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        if score >= 9:
+        
+        if confirmation['positive_count'] >= 3:
             trading_days = 7
-        elif score >= 7:
+        elif confirmation['positive_count'] >= 2:
             trading_days = 5
-        elif score >= 5:
-            trading_days = 3
         else:
-            trading_days = 1
+            trading_days = 3
+        
         today = datetime.now()
         valid_until = calculate_trading_days_ahead(today, trading_days)
+        
         stoch_k_display = f"{latest['Stoch_K']:.2f}" if pd.notna(latest['Stoch_K']) else 'N/A'
-        prompt = f"""أنت محلل مالي خبير متخصص في الأسهم الشرعية. قم بتحليل السهم التالي وقدم رأيك بصيغة JSON فقط بدون أي نص إضافي:
+        
+        direction = "صاعد" if confirmation['positive_count'] >= 2.5 else "هابط"
+        
+        prompt = f"""أنت محلل مالي خبير. قم بتحليل السهم بصيغة JSON فقط:
 
 السهم: {symbol} - {data['name']}
-السعر الحالي: ${data['price']}
-التغير اليومي: {change_pct:+.2f}%
+السعر: ${data['price']}
+التغير: {change_pct:+.2f}%
 
-المؤشرات الفنية:
-- النقاط: {score}/13
+النقاط: {score}/13
+إشارات التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
+
+المؤشرات:
 - RSI: {latest['RSI']:.2f}
 - MACD: {latest['MACD']:.4f}
-- ADX: {latest['ADX']:.2f}
-- MFI: {latest['MFI']:.2f}
-- Stochastic K: {stoch_k_display}
-
-إشارات التأكيد ({confirmation['positive_count']}/4):
 - OBV: {confirmation['signals']['obv']}
 - Stochastic: {confirmation['signals']['stochastic']}
-- Candlestick: {confirmation['signals']['candlestick']}
-- Volume Profile: {confirmation['signals']['volume_profile']}
-- الحكم: {confirmation['verdict']}
+- Volume: {volume_diff_pct:+.2f}%
 
-البيانات الأساسية:
-- P/E Ratio: {pe_ratio if pe_ratio else 'N/A'}
-- EPS: ${eps if eps else 'N/A'}
-- Market Cap: ${market_cap/1e9:.1f}B
-- القطاع: {sector}
+الاتجاه المتوقع: {direction}
 
-تحليل حجم التداول:
-- الحجم الحالي: {current_volume:,}
-- المتوسط: {avg_volume:,}
-- الفرق: {volume_diff_pct:+.2f}%
-
-أعطني تحليلاً شاملاً بصيغة JSON التالية فقط (بدون ```json):
+أعطني JSON فقط (بدون ```json):
 {{
-  "confidence": 85,
-  "success_rating": 8.5,
-  "profit_probability": 78,
+  "confidence": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
+  "success_rating": {round(confirmation['positive_count'] * 2.5, 1)},
+  "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
   "entry_point": {data['price']},
-  "target_short": {data['price'] * 1.08},
-  "target_medium": {data['price'] * 1.15},
-  "stop_loss": {data['price'] * 0.94},
+  "target_short": {data['price'] * (1.08 if direction == 'صاعد' else 0.95)},
+  "target_medium": {data['price'] * (1.15 if direction == 'صاعد' else 0.90)},
+  "stop_loss": {data['price'] * (0.94 if direction == 'صاعد' else 1.05)},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "تحليل شامل يشمل المؤشرات الفنية وإشارات التأكيد...",
+  "summary": "ملخص يتوافق مع الاتجاه {direction} وإشارات التأكيد...",
   "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
-  "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
+  "opportunities": ["فرصة 1" إذا {direction}، "فرصة 2", "فرصة 3"],
   "alerts": ["تنبيه 1", "تنبيه 2", "تنبيه 3"],
-  "sector_flow": "تحليل تدفق السيولة في القطاع...",
+  "sector_flow": "تحليل السيولة في القطاع...",
   "historical_success": "نسبة النجاح التاريخية للإشارات المماثلة...",
-  "recommendation": "التوصية النهائية بناءً على جميع العوامل...",
+  "recommendation": "توصية تتوافق مع {confirmation['verdict']} و{direction}",
   "glossary": {{
     "RSI": "مؤشر القوة النسبية - يقيس...",
-    "MACD": "تقارب وتباعد المتوسطات - يكشف...",
-    "OBV": "حجم التوازن - يتتبع تدفق الأموال...",
-    "Stochastic": "مذبذب عشوائي - يكشف التشبع...",
-    "Candlestick": "الشموع اليابانية - أنماط السعر...",
-    "Volume Profile": "ملف الحجم - توزيع السيولة...",
-    "EMA": "المتوسط المتحرك الأسي - أسرع من SMA...",
-    "Support": "الدعم - سعر يصعب كسره للأسفل..."
+    "MACD": "تقارب وتباعد المتوسطات...",
+    "OBV": "حجم التوازن - تدفق الأموال...",
+    "Stochastic": "مذبذب عشوائي...",
+    "Candlestick": "الشموع اليابانية...",
+    "Volume Profile": "ملف الحجم...",
+    "EMA": "المتوسط المتحرك الأسي...",
+    "Support": "الدعم..."
   }}
 }}"""
+
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
