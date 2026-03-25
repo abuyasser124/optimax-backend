@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OptiMax v6.3 - تحليل الأسهم الشرعية</title>
+    <title>OptiMax v6.3.1 - تحليل الأسهم الشرعية</title>
     <link rel="manifest" href="data:application/json;charset=utf-8,%7B%22background_color%22%3A%22%23f5f5f5%22%2C%22dir%22%3A%22rtl%22%2C%22display%22%3A%22standalone%22%2C%22name%22%3A%22OptiMax%22%2C%22orientation%22%3A%22any%22%2C%22scope%22%3A%22%2F%22%2C%22short_name%22%3A%22OptiMax%22%2C%22start_url%22%3A%22%2F%22%2C%22theme_color%22%3A%22%23667eea%22%2C%22id%22%3A%22OptiMax%22%2C%22description%22%3A%22%D8%AA%D8%AD%D9%84%D9%8A%D9%84%20%D8%A7%D8%AD%D8%AA%D8%B1%D8%A7%D9%81%D9%8A%20%D9%84%D9%84%D8%A3%D8%B3%D9%87%D9%85%20%D8%A7%D9%84%D8%B4%D8%B1%D8%B9%D9%8A%D8%A9%20%D8%A7%D9%84%D8%A3%D9%85%D8%B1%D9%8A%D9%83%D9%8A%D8%A9%20%D9%85%D8%AF%D8%B9%D9%88%D9%85%20%D8%A8%D8%A7%D9%84%D8%B0%D9%83%D8%A7%D8%A1%20%D8%A7%D9%84%D8%A7%D8%B5%D8%B7%D9%86%D8%A7%D8%B9%D9%8A%22%7D">
     <meta name="theme-color" content="#667eea">
-    <meta name="description" content="تحليل احترافي للأسهم مدعوم بالذكاء الاصطناعي - OptiMax v6.3">
+    <meta name="description" content="تحليل احترافي للأسهم مدعوم بالذكاء الاصطناعي - OptiMax v6.3.1">
     <style>
         * {
             margin: 0;
@@ -474,6 +474,43 @@
             border-right: 4px solid #667eea;
         }
 
+        .direction-banner {
+            padding: 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.1em;
+        }
+
+        .direction-banner.bullish {
+            background: #d1fae5;
+            color: #065f46;
+            border: 2px solid #10b981;
+        }
+
+        .direction-banner.bearish {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 2px solid #ef4444;
+        }
+
+        .direction-banner.neutral {
+            background: #fef3c7;
+            color: #92400e;
+            border: 2px solid #f59e0b;
+        }
+
+        .direction-note {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: #666;
+            border-right: 3px solid #667eea;
+        }
+
         .confidence-box {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -706,7 +743,7 @@
         <div class="header">
             <h1>📊 OptiMax</h1>
             <p>تحليل احترافي للأسهم مدعوم بالذكاء الاصطناعي</p>
-            <span class="version">v6.3.0</span>
+            <span class="version">v6.3.1</span>
             <div class="credits">تطوير: عبدالرحمن أبوحيمد أبوياسر + Claude AI</div>
         </div>
 
@@ -910,9 +947,30 @@
                 }
 
                 if (data.targets) {
+                    let directionClass = 'neutral';
+                    let directionIcon = '➡️';
+                    let directionText = 'الاتجاه: محايد (مراقبة)';
+                    let directionNote = '💡 السهم في منطقة محايدة - انتظر إشارات أوضح قبل الدخول';
+                    
+                    if (data.targets.direction === 'صاعد') {
+                        directionClass = 'bullish';
+                        directionIcon = '📈';
+                        directionText = 'الاتجاه: صاعد (السعر متوقع يرتفع)';
+                        directionNote = '✅ الأهداف للأعلى - إذا عندك من السهم احتفظ به ومتابعة الأهداف';
+                    } else if (data.targets.direction === 'هابط') {
+                        directionClass = 'bearish';
+                        directionIcon = '📉';
+                        directionText = 'الاتجاه: هابط (السعر متوقع ينزل)';
+                        directionNote = '⚠️ الأهداف للأسفل - إذا عندك من السهم راقب وقف الخسارة بحذر!';
+                    }
+
                     analysisHTML += `
                         <div class="analysis-section">
-                            <div class="section-title">🎯 التوصيات والأهداف</div>
+                            <div class="section-title">🎯 الأهداف المتوقعة</div>
+                            
+                            <div class="direction-banner ${directionClass}">
+                                ${directionIcon} ${directionText}
+                            </div>
                             
                             <div class="targets-grid">
                                 <div class="target-box">
@@ -921,16 +979,26 @@
                                 </div>
                                 <div class="target-box">
                                     <div class="target-label">الهدف القصير</div>
-                                    <div class="target-value positive">$${data.targets.target_short}</div>
+                                    <div class="target-value ${data.targets.direction === 'صاعد' ? 'positive' : data.targets.direction === 'هابط' ? 'negative' : ''}">
+                                        $${data.targets.target_short} ${data.targets.direction === 'صاعد' ? '⬆️' : data.targets.direction === 'هابط' ? '⬇️' : ''}
+                                    </div>
                                 </div>
                                 <div class="target-box">
                                     <div class="target-label">الهدف المتوسط</div>
-                                    <div class="target-value positive">$${data.targets.target_medium}</div>
+                                    <div class="target-value ${data.targets.direction === 'صاعد' ? 'positive' : data.targets.direction === 'هابط' ? 'negative' : ''}">
+                                        $${data.targets.target_medium} ${data.targets.direction === 'صاعد' ? '⬆️' : data.targets.direction === 'هابط' ? '⬇️' : ''}
+                                    </div>
                                 </div>
                                 <div class="target-box">
                                     <div class="target-label">وقف الخسارة</div>
-                                    <div class="target-value negative">$${data.targets.stop_loss}</div>
+                                    <div class="target-value ${data.targets.direction === 'صاعد' ? 'negative' : data.targets.direction === 'هابط' ? 'positive' : ''}">
+                                        $${data.targets.stop_loss} ${data.targets.direction === 'صاعد' ? '⬇️' : data.targets.direction === 'هابط' ? '⬆️' : ''}
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div class="direction-note">
+                                ${directionNote}
                             </div>
                         </div>
                     `;
