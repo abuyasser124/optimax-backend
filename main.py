@@ -125,6 +125,19 @@ def calculate_volume_profile(df):
     else:
         return "متوسط"
 
+def calculate_support_resistance(hist):
+    df = hist.tail(60)
+    highs = df.nlargest(3, 'High')['High'].tolist()
+    lows = df.nsmallest(3, 'Low')['Low'].tolist()
+    return {
+        'resistance_1': round(highs[0], 2) if len(highs) > 0 else None,
+        'resistance_2': round(highs[1], 2) if len(highs) > 1 else None,
+        'resistance_3': round(highs[2], 2) if len(highs) > 2 else None,
+        'support_1': round(lows[0], 2) if len(lows) > 0 else None,
+        'support_2': round(lows[1], 2) if len(lows) > 1 else None,
+        'support_3': round(lows[2], 2) if len(lows) > 2 else None
+    }
+
 def calculate_indicators(hist):
     df = hist.copy()
     delta = df['Close'].diff()
@@ -333,7 +346,7 @@ async def root():
     return {
         "name": "OptiMax Stock Analysis API",
         "version": "6.3.2",
-        "description": "Fixed targets for weak stocks - realistic stop loss",
+        "description": "Fixed targets for weak stocks + support/resistance levels",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -394,6 +407,7 @@ async def get_detailed_analysis(symbol: str):
     score = calculate_score(indicators, data['info'])
     confirmation = calculate_confirmation_signals(indicators)
     targets = calculate_targets(data['price'], confirmation['positive_count'])
+    support_resistance = calculate_support_resistance(data['history'])
     latest = indicators.iloc[-1]
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
@@ -420,6 +434,7 @@ async def get_detailed_analysis(symbol: str):
         "signal": get_signal(score),
         "confirmation": confirmation,
         "targets": targets,
+        "support_resistance": support_resistance,
         "indicators": {
             "rsi": round(latest['RSI'], 2),
             "macd": round(latest['MACD'], 4),
