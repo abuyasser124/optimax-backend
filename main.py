@@ -9,7 +9,7 @@ import os
 from cachetools import TTLCache
 import re
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.5")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.6")
 
 app.add_middleware(
     CORSMiddleware,
@@ -216,6 +216,7 @@ def calculate_confirmation_signals(indicators):
     prev = indicators.iloc[-2] if len(indicators) > 1 else latest
     confirmations = {}
     positive_count = 0
+    
     if len(indicators) >= 5:
         obv_trend = latest['OBV'] > indicators['OBV'].iloc[-5]
         confirmations['obv'] = "صاعد" if obv_trend else "هابط"
@@ -223,6 +224,7 @@ def calculate_confirmation_signals(indicators):
             positive_count += 1
     else:
         confirmations['obv'] = "غير محدد"
+    
     stoch_k = latest['Stoch_K']
     if pd.notna(stoch_k):
         if stoch_k < 20:
@@ -235,24 +237,39 @@ def calculate_confirmation_signals(indicators):
             positive_count += 0.5
     else:
         confirmations['stochastic'] = "غير محدد"
+    
     pattern = detect_candlestick_pattern(indicators)
     confirmations['candlestick'] = pattern
     if pattern == "صاعد":
         positive_count += 1
     elif pattern == "محايد":
         positive_count += 0.5
+    
     vol_profile = calculate_volume_profile(indicators)
     confirmations['volume_profile'] = vol_profile
     if vol_profile == "قوي":
         positive_count += 1
     elif vol_profile == "متوسط":
         positive_count += 0.5
-    if positive_count >= 3:
-        verdict = "ادخل الآن!"
-    elif positive_count >= 2:
-        verdict = "راقب - تحتاج تأكيد"
+    
+    # NEW: Check for bearish trend BEFORE verdict
+    macd = latest['MACD']
+    rsi = latest['RSI']
+    roc = latest['ROC']
+    is_bearish = macd < 0 and rsi < 40 and roc < 0
+    
+    # Override if bearish
+    if is_bearish:
+        positive_count = min(positive_count, 1.5)
+        verdict = "لا تدخل - اتجاه هابط!"
     else:
-        verdict = "لا تدخل!"
+        if positive_count >= 3:
+            verdict = "ادخل الآن!"
+        elif positive_count >= 2:
+            verdict = "راقب - تحتاج تأكيد"
+        else:
+            verdict = "لا تدخل!"
+    
     return {
         'signals': confirmations,
         'positive_count': round(positive_count, 1),
@@ -325,9 +342,8 @@ def calculate_score(indicators, info):
     elif conf_score >= 3:
         score += 1
     
-    # NEW: Cap score for bearish stocks
     if macd < 0 and rsi < 40 and roc < 0:
-        score = min(score, 6)  # Maximum 6/13 for clearly bearish stocks
+        score = min(score, 6)
     
     return max(0, round(score, 1))
 
@@ -367,7 +383,6 @@ def calculate_targets_advanced(price, confirmation_score, atr, support_resistanc
         }
 
 def validate_claude_response(response_text, data, targets, support_resistance):
-    """التحقق من رد Claude للكشف عن الأخطاء"""
     errors = []
     current_price = data['price']
     price_mentions = re.findall(r'\$(\d+\.?\d*)', response_text)
@@ -402,8 +417,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.5",
-        "description": "Fixed bearish stock scoring + Claude validation improvements",
+        "version": "6.3.6",
+        "description": "Fixed confirmation signals for bearish stocks",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -549,7 +564,6 @@ async def get_detailed_analysis(symbol: str):
         s1 = support_resistance.get('support_1', 'N/A')
         sl = targets['stop_loss']
         
-        # NEW: Detect bearish trend
         is_bearish = latest['MACD'] < 0 and latest['RSI'] < 40 and latest['ROC'] < 0
         trend_warning = ""
         if is_bearish:
