@@ -9,7 +9,7 @@ import os
 from cachetools import TTLCache
 import re
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.4")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.5")
 
 app.add_middleware(
     CORSMiddleware,
@@ -324,6 +324,11 @@ def calculate_score(indicators, info):
         score -= 2
     elif conf_score >= 3:
         score += 1
+    
+    # NEW: Cap score for bearish stocks
+    if macd < 0 and rsi < 40 and roc < 0:
+        score = min(score, 6)  # Maximum 6/13 for clearly bearish stocks
+    
     return max(0, round(score, 1))
 
 def calculate_targets_advanced(price, confirmation_score, atr, support_resistance):
@@ -397,8 +402,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.4",
-        "description": "Fixed Claude hallucinations + validation",
+        "version": "6.3.5",
+        "description": "Fixed bearish stock scoring + Claude validation improvements",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -544,13 +549,34 @@ async def get_detailed_analysis(symbol: str):
         s1 = support_resistance.get('support_1', 'N/A')
         sl = targets['stop_loss']
         
+        # NEW: Detect bearish trend
+        is_bearish = latest['MACD'] < 0 and latest['RSI'] < 40 and latest['ROC'] < 0
+        trend_warning = ""
+        if is_bearish:
+            trend_warning = f"""
+⚠️⚠️⚠️ BEARISH TREND DETECTED:
+- MACD: {latest['MACD']:.2f} (سالب!)
+- RSI: {latest['RSI']:.2f} (ضعيف!)
+- ROC: {latest['ROC']:.2f}% (سالب!)
+- السعر تحت SMA-20 و SMA-50
+
+هذا سهم في اتجاه هابط!
+لا تقل "ادخل الآن" أو "دخول فوري"
+قل "احذر - اتجاه هابط" أو "انتظر استقرار"
+"""
+        
         prompt = f"""⚠️⚠️⚠️ CRITICAL INSTRUCTIONS - اقرأ بعناية ⚠️⚠️⚠️
 
 التاريخ الحالي: {current_date}
 الشهر الحالي: {current_month_year}
 
+{trend_warning}
+
 البيانات الدقيقة - استخدمها فقط:
 - السعر الحالي: ${data['price']:.2f}
+- MACD: {latest['MACD']:.4f}
+- RSI: {latest['RSI']:.2f}
+- ROC: {latest['ROC']:.2f}%
 - المقاومة 1: ${r1}
 - المقاومة 2: ${r2}
 - الدعم 1: ${s1}
@@ -562,6 +588,7 @@ async def get_detailed_analysis(symbol: str):
 3. التواريخ المستقبلية فقط (بعد {current_month_year})
 4. لا تذكر 2024 أو 2025 أبداً
 5. Stop Loss دائماً = ${sl:.2f}
+6. إذا MACD سالب و RSI < 40: لا تقل "ادخل الآن"!
 
 عند ذكر مقاومة: استخدم ${r1} أو ${r2}
 عند ذكر دعم: استخدم ${s1}
@@ -579,13 +606,13 @@ async def get_detailed_analysis(symbol: str):
   "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "ملخص يتوافق مع {confirmation['verdict']}",
+  "summary": "ملخص يتوافق مع المؤشرات الحقيقية",
   "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
   "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
   "alerts": ["تنبيه بدون أرقام مخترعة", "تنبيه بتواريخ مستقبلية فقط"],
   "sector_flow": "تحليل السيولة",
   "historical_success": "نسبة النجاح التاريخية",
-  "recommendation": "توصية تتوافق مع {confirmation['verdict']}",
+  "recommendation": "توصية واقعية تتوافق مع المؤشرات",
   "glossary": {{
     "RSI": "مؤشر القوة النسبية - يقيس زخم حركة السعر",
     "MACD": "تقارب وتباعد المتوسطات - يكشف التغيرات في القوة",
