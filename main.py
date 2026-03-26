@@ -7,8 +7,9 @@ from datetime import datetime, timedelta
 import anthropic
 import os
 from cachetools import TTLCache
+import re
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.3")
+app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.4")
 
 app.add_middleware(
     CORSMiddleware,
@@ -360,6 +361,22 @@ def calculate_targets_advanced(price, confirmation_score, atr, support_resistanc
             'direction': 'هابط'
         }
 
+def validate_claude_response(response_text, data, targets, support_resistance):
+    """التحقق من رد Claude للكشف عن الأخطاء"""
+    errors = []
+    current_price = data['price']
+    price_mentions = re.findall(r'\$(\d+\.?\d*)', response_text)
+    for price_str in price_mentions:
+        price_float = float(price_str)
+        if abs(price_float - current_price) > current_price * 1.5:
+            errors.append(f"رقم مشكوك فيه: ${price_str} (السعر: ${current_price})")
+    date_mentions = re.findall(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', response_text)
+    current_year = datetime.now().year
+    for month, year in date_mentions:
+        if int(year) < current_year:
+            errors.append(f"تاريخ ماضي: {month} {year}")
+    return errors
+
 def get_signal(score):
     if score >= 11:
         return "Super Strong Buy"
@@ -380,8 +397,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.3",
-        "description": "Advanced support/resistance + dynamic targets based on ATR",
+        "version": "6.3.4",
+        "description": "Fixed Claude hallucinations + validation",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -519,13 +536,41 @@ async def get_detailed_analysis(symbol: str):
             trading_days = 3
         today = datetime.now()
         valid_until = calculate_trading_days_ahead(today, trading_days)
-        prompt = f"""أنت محلل مالي خبير. قم بتحليل السهم وإعطاء JSON فقط بدون أي نص إضافي:
+        current_date = today.strftime('%B %d, %Y')
+        current_month_year = today.strftime('%B %Y')
+        next_month = (today + timedelta(days=30)).strftime('%B %Y')
+        r1 = support_resistance.get('resistance_1', 'N/A')
+        r2 = support_resistance.get('resistance_2', 'N/A')
+        s1 = support_resistance.get('support_1', 'N/A')
+        sl = targets['stop_loss']
+        
+        prompt = f"""⚠️⚠️⚠️ CRITICAL INSTRUCTIONS - اقرأ بعناية ⚠️⚠️⚠️
+
+التاريخ الحالي: {current_date}
+الشهر الحالي: {current_month_year}
+
+البيانات الدقيقة - استخدمها فقط:
+- السعر الحالي: ${data['price']:.2f}
+- المقاومة 1: ${r1}
+- المقاومة 2: ${r2}
+- الدعم 1: ${s1}
+- Stop Loss المحسوب: ${sl:.2f}
+
+⚠️ قواعد صارمة:
+1. استخدم الأرقام المذكورة أعلاه فقط
+2. لا تخترع أرقام جديدة
+3. التواريخ المستقبلية فقط (بعد {current_month_year})
+4. لا تذكر 2024 أو 2025 أبداً
+5. Stop Loss دائماً = ${sl:.2f}
+
+عند ذكر مقاومة: استخدم ${r1} أو ${r2}
+عند ذكر دعم: استخدم ${s1}
+عند ذكر وقف خسارة: استخدم ${sl:.2f}
+عند ذكر تواريخ: استخدم {next_month} أو ما بعده
 
 السهم: {symbol} - {data['name']}
 النقاط: {score}/13
 التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
-
-لا تحسب الأهداف - فقط قدم تحليلك.
 
 أعطني JSON فقط (بدون ```json):
 {{
@@ -534,13 +579,13 @@ async def get_detailed_analysis(symbol: str):
   "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "ملخص يتوافق مع {confirmation['verdict']} - تحليل شامل للوضع الحالي...",
-  "risks": ["مخاطرة محددة 1", "مخاطرة محددة 2", "مخاطرة محددة 3"],
-  "opportunities": ["فرصة محددة 1", "فرصة محددة 2", "فرصة محددة 3"],
-  "alerts": ["تنبيه عملي 1", "تنبيه عملي 2", "تنبيه عملي 3"],
-  "sector_flow": "تحليل تدفق السيولة في القطاع والاتجاه العام...",
-  "historical_success": "نسبة النجاح التاريخية للإشارات المماثلة...",
-  "recommendation": "توصية نهائية واضحة تتوافق مع {confirmation['verdict']}",
+  "summary": "ملخص يتوافق مع {confirmation['verdict']}",
+  "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
+  "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
+  "alerts": ["تنبيه بدون أرقام مخترعة", "تنبيه بتواريخ مستقبلية فقط"],
+  "sector_flow": "تحليل السيولة",
+  "historical_success": "نسبة النجاح التاريخية",
+  "recommendation": "توصية تتوافق مع {confirmation['verdict']}",
   "glossary": {{
     "RSI": "مؤشر القوة النسبية - يقيس زخم حركة السعر",
     "MACD": "تقارب وتباعد المتوسطات - يكشف التغيرات في القوة",
@@ -565,12 +610,21 @@ async def get_detailed_analysis(symbol: str):
         if response_text.endswith("```"):
             response_text = response_text[:-3]
         response_text = response_text.strip()
+        
+        validation_errors = validate_claude_response(response_text, data, targets, support_resistance)
+        if validation_errors:
+            print(f"⚠️ Claude validation warnings for {symbol}:")
+            for error in validation_errors:
+                print(f"  - {error}")
+        
         import json
         claude_analysis = json.loads(response_text)
         analysis_data["claude_analysis"] = claude_analysis
+        analysis_data["validation_warnings"] = validation_errors if validation_errors else None
     except Exception as e:
         print(f"Claude API error: {str(e)}")
         analysis_data["claude_analysis"] = None
+        analysis_data["validation_warnings"] = None
     cache[cache_key] = analysis_data
     return analysis_data
 
