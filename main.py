@@ -9,7 +9,7 @@ import os
 from cachetools import TTLCache
 import re
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="6.3.6")
+app = FastAPI(title="OptiMax Stock Analysis API", version="7.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -252,13 +252,11 @@ def calculate_confirmation_signals(indicators):
     elif vol_profile == "متوسط":
         positive_count += 0.5
     
-    # NEW: Check for bearish trend BEFORE verdict
     macd = latest['MACD']
     rsi = latest['RSI']
     roc = latest['ROC']
     is_bearish = macd < 0 and rsi < 40 and roc < 0
     
-    # Override if bearish
     if is_bearish:
         positive_count = min(positive_count, 1.5)
         verdict = "لا تدخل - اتجاه هابط!"
@@ -277,73 +275,213 @@ def calculate_confirmation_signals(indicators):
         'verdict': verdict
     }
 
+# NEW: Weight-based scoring functions
+def score_rsi(rsi):
+    """RSI scoring with smooth gradients (max 2.0 points)"""
+    if pd.isna(rsi):
+        return 0
+    if 40 <= rsi <= 60:
+        return 2.0  # Perfect zone
+    elif 35 <= rsi < 40:
+        return 1.5 + (rsi - 35) * 0.1  # 1.5 to 2.0
+    elif 60 < rsi <= 65:
+        return 2.0 - (rsi - 60) * 0.1  # 2.0 to 1.5
+    elif 30 <= rsi < 35:
+        return 1.0 + (rsi - 30) * 0.1  # 1.0 to 1.5
+    elif 65 < rsi <= 70:
+        return 1.5 - (rsi - 65) * 0.1  # 1.5 to 1.0
+    elif 25 <= rsi < 30:
+        return 0.5 + (rsi - 25) * 0.1  # 0.5 to 1.0
+    elif 70 < rsi <= 75:
+        return 1.0 - (rsi - 70) * 0.1  # 1.0 to 0.5
+    else:
+        return 0
+
+def score_macd(macd, signal):
+    """MACD scoring with gradient (max 2.0 points)"""
+    if pd.isna(macd) or pd.isna(signal):
+        return 0
+    
+    diff = macd - signal
+    
+    if macd > 0 and diff > 0:
+        # Strong bullish
+        strength = min(abs(macd), 5) / 5
+        return 1.5 + (strength * 0.5)  # 1.5 to 2.0
+    elif macd > 0 and diff <= 0:
+        # Bullish but weakening
+        return 1.0
+    elif macd <= 0 and diff > 0:
+        # Bearish but improving
+        strength = min(abs(diff), 2) / 2
+        return 0.5 + (strength * 0.5)  # 0.5 to 1.0
+    else:
+        # Strong bearish
+        return 0
+
+def score_adx(adx):
+    """ADX scoring with smooth gradient (max 2.0 points)"""
+    if pd.isna(adx):
+        return 0
+    
+    if adx >= 50:
+        return 2.0  # Very strong trend
+    elif adx >= 40:
+        return 1.7 + (adx - 40) * 0.03  # 1.7 to 2.0
+    elif adx >= 30:
+        return 1.4 + (adx - 30) * 0.03  # 1.4 to 1.7
+    elif adx >= 25:
+        return 1.0 + (adx - 25) * 0.08  # 1.0 to 1.4
+    elif adx >= 20:
+        return 0.5 + (adx - 20) * 0.1   # 0.5 to 1.0
+    elif adx >= 15:
+        return 0.2 + (adx - 15) * 0.06  # 0.2 to 0.5
+    else:
+        return 0
+
+def score_roc(roc):
+    """ROC scoring with gradient (max 1.5 points)"""
+    if pd.isna(roc):
+        return 0
+    
+    if roc >= 15:
+        return 1.5
+    elif roc >= 10:
+        return 1.2 + (roc - 10) * 0.06  # 1.2 to 1.5
+    elif roc >= 5:
+        return 0.8 + (roc - 5) * 0.08   # 0.8 to 1.2
+    elif roc >= 0:
+        return 0.3 + (roc) * 0.1        # 0.3 to 0.8
+    elif roc >= -5:
+        return 0.3 + (roc + 5) * 0.06   # 0 to 0.3
+    else:
+        return 0
+
+def score_mfi(mfi):
+    """MFI scoring (max 1.0 point)"""
+    if pd.isna(mfi):
+        return 0
+    
+    if 40 <= mfi <= 60:
+        return 1.0
+    elif 30 <= mfi < 40:
+        return 0.5 + (mfi - 30) * 0.05
+    elif 60 < mfi <= 70:
+        return 1.0 - (mfi - 60) * 0.05
+    elif 20 <= mfi < 30:
+        return 0.2 + (mfi - 20) * 0.03
+    elif 70 < mfi <= 80:
+        return 0.5 - (mfi - 70) * 0.03
+    else:
+        return 0
+
+def score_volume(current_volume, avg_volume):
+    """Volume scoring (max 1.0 point)"""
+    if avg_volume == 0:
+        return 0
+    
+    ratio = current_volume / avg_volume
+    
+    if ratio >= 2.0:
+        return 1.0
+    elif ratio >= 1.5:
+        return 0.8 + (ratio - 1.5) * 0.4
+    elif ratio >= 1.2:
+        return 0.6 + (ratio - 1.2) * 0.67
+    elif ratio >= 1.0:
+        return 0.4 + (ratio - 1.0) * 1.0
+    elif ratio >= 0.8:
+        return 0.2 + (ratio - 0.8) * 1.0
+    elif ratio >= 0.5:
+        return (ratio - 0.5) * 0.67
+    else:
+        return 0
+
+def score_trend_alignment(price, sma_20, sma_50):
+    """Trend alignment scoring (max 2.0 points)"""
+    if pd.isna(sma_20) or pd.isna(sma_50):
+        return 0
+    
+    if price > sma_20 and price > sma_50 and sma_20 > sma_50:
+        distance_20 = (price - sma_20) / sma_20
+        if distance_20 > 0.1:  # Too far - potential reversal
+            return 1.5
+        else:
+            return 2.0
+    elif price > sma_20 and sma_20 > sma_50:
+        return 1.5
+    elif price > sma_20:
+        return 1.0
+    elif price > sma_50:
+        return 0.5
+    else:
+        return 0
+
 def calculate_score(indicators, info):
-    score = 0
+    """
+    NEW: Weight-based scoring system
+    Total possible: ~13 points
+    """
     latest = indicators.iloc[-1]
     prev = indicators.iloc[-2] if len(indicators) > 1 else latest
-    rsi = latest['RSI']
-    if 30 <= rsi <= 70:
-        score += 2
-    elif 25 <= rsi < 30 or 70 < rsi <= 75:
-        score += 1
-    macd = latest['MACD']
-    signal = latest['Signal']
-    if macd > signal and macd > 0:
-        score += 2
-    elif macd > signal:
-        score += 1
-    price = latest['Close']
-    if price > latest['SMA_20'] and price > latest['SMA_50']:
-        score += 2
-    elif price > latest['SMA_20']:
-        score += 1
-    if price <= latest['BB_Lower']:
-        score += 1
-    mfi = latest['MFI']
-    if 20 <= mfi <= 80:
-        score += 1
-    adx = latest['ADX']
-    if adx > 25:
-        score += 1
+    
+    score = 0
+    
+    # 1. RSI (max 2.0)
+    score += score_rsi(latest['RSI'])
+    
+    # 2. MACD (max 2.0)
+    score += score_macd(latest['MACD'], latest['Signal'])
+    
+    # 3. Trend Alignment (max 2.0)
+    score += score_trend_alignment(latest['Close'], latest['SMA_20'], latest['SMA_50'])
+    
+    # 4. ADX (max 2.0)
+    score += score_adx(latest['ADX'])
+    
+    # 5. ROC (max 1.5)
+    score += score_roc(latest['ROC'])
+    
+    # 6. MFI (max 1.0)
+    score += score_mfi(latest['MFI'])
+    
+    # 7. Volume (max 1.0)
     current_volume = latest['Volume']
     avg_volume = indicators['Volume'].tail(20).mean()
-    if current_volume > avg_volume:
+    score += score_volume(current_volume, avg_volume)
+    
+    # 8. Bollinger Bands position (max 0.5)
+    price = latest['Close']
+    if pd.notna(latest['BB_Lower']) and price <= latest['BB_Lower']:
         score += 0.5
+    
+    # 9. ATR check (max 0.5)
     atr = latest['ATR']
     if atr < price * 0.05:
         score += 0.5
-    roc = latest['ROC']
-    if roc > 0:
-        score += 0.5
+    
+    # 10. Gap check (max 0.5)
     if len(indicators) > 1:
         gap = abs(latest['Open'] - prev['Close']) / prev['Close']
         if gap < 0.02:
             score += 0.5
-    volume_diff_pct = ((current_volume - avg_volume) / avg_volume) * 100
-    if volume_diff_pct < -70:
-        score -= 3
-    elif volume_diff_pct < -50:
-        score -= 2
-    elif volume_diff_pct < -30:
-        score -= 1
-    elif volume_diff_pct > -20:
-        score += 1
-    if macd > 0:
-        score += 1
-    rsi_rising = rsi > prev['RSI'] if len(indicators) > 1 else False
-    if rsi > 30 and rsi_rising:
-        score += 1
+    
+    # Confirmation bonus/penalty (±2.0)
     confirmation = calculate_confirmation_signals(indicators)
     conf_score = confirmation['positive_count']
-    if conf_score < 1.5:
-        score -= 4
-    elif conf_score < 2.5:
-        score -= 2
-    elif conf_score >= 3:
-        score += 1
     
-    if macd < 0 and rsi < 40 and roc < 0:
-        score = min(score, 6)
+    if conf_score >= 3.5:
+        score += 2.0
+    elif conf_score >= 3:
+        score += 1.5
+    elif conf_score >= 2.5:
+        score += 0.5
+    elif conf_score >= 2:
+        score += 0
+    elif conf_score >= 1.5:
+        score -= 1.0
+    else:
+        score -= 2.0
     
     return max(0, round(score, 1))
 
@@ -417,8 +555,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "6.3.6",
-        "description": "Fixed confirmation signals for bearish stocks",
+        "version": "7.0.0",
+        "description": "Weight-based scoring system with smooth gradients",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
