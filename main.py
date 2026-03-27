@@ -9,7 +9,7 @@ import os
 from cachetools import TTLCache
 import re
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="7.0.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="7.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -211,12 +211,218 @@ def calculate_indicators(hist):
     df['Stoch_K'], df['Stoch_D'] = calculate_stochastic(df)
     return df
 
+def analyze_recent_performance(indicators):
+    """تحليل أداء السهم في آخر 5 أيام"""
+    recent_5d = indicators.tail(5)
+    
+    daily_changes = recent_5d['Close'].pct_change()
+    avg_change = daily_changes.mean() * 100
+    volatility = daily_changes.std() * 100
+    positive_days = (daily_changes > 0).sum()
+    
+    return {
+        'trend': 'صاعد قوي' if positive_days >= 4 else 'صاعد' if positive_days >= 3 else 'هابط',
+        'avg_daily_change': round(avg_change, 2),
+        'volatility': round(volatility, 2),
+        'positive_days': int(positive_days),
+        'consistency': 'عالية' if positive_days >= 4 else 'متوسطة' if positive_days >= 2 else 'منخفضة'
+    }
+
+def calculate_momentum_score(indicators):
+    """قياس قوة الزخم الحالي (0-10)"""
+    latest = indicators.iloc[-1]
+    prev = indicators.iloc[-2] if len(indicators) > 1 else latest
+    
+    momentum = 0
+    
+    # ROC (0-3)
+    if latest['ROC'] > 10:
+        momentum += 3
+    elif latest['ROC'] > 5:
+        momentum += 2
+    elif latest['ROC'] > 0:
+        momentum += 1
+    
+    # MACD strength (0-3)
+    if abs(latest['MACD']) > 3:
+        momentum += 3
+    elif abs(latest['MACD']) > 2:
+        momentum += 2
+    elif abs(latest['MACD']) > 1:
+        momentum += 1
+    
+    # RSI rising (0-2)
+    if latest['RSI'] > prev['RSI'] and latest['RSI'] > 50:
+        momentum += 2
+    elif latest['RSI'] > prev['RSI']:
+        momentum += 1
+    
+    # Volume (0-2)
+    avg_volume = indicators['Volume'].tail(20).mean()
+    if latest['Volume'] > avg_volume * 2:
+        momentum += 2
+    elif latest['Volume'] > avg_volume * 1.5:
+        momentum += 1
+    
+    return {
+        'score': momentum,
+        'strength': 'قوي جداً' if momentum >= 8 else 'قوي' if momentum >= 6 else 'متوسط' if momentum >= 4 else 'ضعيف'
+    }
+
+def detect_late_entry(indicators):
+    """كشف الدخول المتأخر (نهاية الموجة)"""
+    latest = indicators.iloc[-1]
+    
+    warnings = []
+    risk_level = 'low'
+    
+    rsi = latest['RSI']
+    stoch_k = latest['Stoch_K']
+    
+    if rsi > 75 and pd.notna(stoch_k) and stoch_k > 85:
+        warnings.append('⚠️ تشبع شرائي حاد - احتمال نهاية الموجة!')
+        risk_level = 'critical'
+    elif rsi > 70 and pd.notna(stoch_k) and stoch_k > 80:
+        warnings.append('⚠️ تشبع شرائي - قد تكون متأخر!')
+        risk_level = 'high'
+    elif rsi > 65 or (pd.notna(stoch_k) and stoch_k > 75):
+        warnings.append('⚠️ قرب التشبع - راقب عن كثب')
+        risk_level = 'medium'
+    
+    return {
+        'warnings': warnings,
+        'risk_level': risk_level,
+        'is_late': risk_level in ['high', 'critical']
+    }
+
+def check_position_risk(price, resistance, support):
+    """تقييم مخاطر المكان"""
+    risk_analysis = {
+        'distance_to_resistance': None,
+        'distance_to_support': None,
+        'position_quality': 'neutral',
+        'warnings': [],
+        'opportunities': []
+    }
+    
+    if resistance:
+        dist_res = (resistance - price) / price * 100
+        risk_analysis['distance_to_resistance'] = round(dist_res, 2)
+        
+        if dist_res < 2:
+            risk_analysis['warnings'].append('⚠️ قريب جداً من المقاومة - مساحة محدودة!')
+            risk_analysis['position_quality'] = 'poor'
+        elif dist_res < 5:
+            risk_analysis['warnings'].append('⚠️ المقاومة قريبة - حذر!')
+            risk_analysis['position_quality'] = 'fair'
+    
+    if support:
+        dist_sup = (price - support) / price * 100
+        risk_analysis['distance_to_support'] = round(dist_sup, 2)
+        
+        if dist_sup < 3:
+            risk_analysis['opportunities'].append('✅ قريب من الدعم - منطقة شراء جيدة!')
+            if risk_analysis['position_quality'] == 'neutral':
+                risk_analysis['position_quality'] = 'good'
+        elif dist_sup < 5:
+            risk_analysis['opportunities'].append('✅ قرب الدعم - فرصة مناسبة')
+            if risk_analysis['position_quality'] == 'neutral':
+                risk_analysis['position_quality'] = 'fair'
+    
+    return risk_analysis
+
+def calculate_risk_reward(price, target, stop_loss):
+    """حساب نسبة المخاطرة/العائد"""
+    if not target or not stop_loss or stop_loss >= price:
+        return None
+    
+    potential_gain = (target - price) / price * 100
+    potential_loss = (price - stop_loss) / price * 100
+    
+    if potential_loss == 0:
+        return None
+    
+    ratio = potential_gain / potential_loss
+    
+    return {
+        'ratio': round(ratio, 2),
+        'potential_gain': round(potential_gain, 1),
+        'potential_loss': round(potential_loss, 1),
+        'verdict': 'ممتاز' if ratio >= 2.5 else 'جيد' if ratio >= 1.5 else 'ضعيف'
+    }
+
+def calculate_opportunity_quality(score, indicators, support_resistance, position_risk, late_entry, momentum):
+    """تقييم جودة الفرصة (A+ إلى D)"""
+    quality_score = 0
+    factors = []
+    
+    # Score (0-3)
+    if score >= 11:
+        quality_score += 3
+        factors.append('نقاط ممتازة')
+    elif score >= 9:
+        quality_score += 2
+        factors.append('نقاط جيدة')
+    elif score >= 7:
+        quality_score += 1
+    
+    # Position (0-2)
+    if position_risk['position_quality'] == 'good':
+        quality_score += 2
+        factors.append('مكان ممتاز')
+    elif position_risk['position_quality'] == 'fair':
+        quality_score += 1
+    elif position_risk['position_quality'] == 'poor':
+        quality_score -= 2
+        factors.append('مكان سيء')
+    
+    # Timing (0-2)
+    if not late_entry['is_late']:
+        quality_score += 2
+        factors.append('توقيت جيد')
+    else:
+        quality_score -= 2
+        factors.append('دخول متأخر')
+    
+    # Momentum (0-2)
+    if momentum['score'] >= 8:
+        quality_score += 2
+        factors.append('زخم قوي')
+    elif momentum['score'] >= 6:
+        quality_score += 1
+    
+    # ADX (0-1)
+    latest = indicators.iloc[-1]
+    if latest['ADX'] > 25:
+        quality_score += 1
+        factors.append('اتجاه واضح')
+    
+    # Grade
+    if quality_score >= 9:
+        grade = 'A+'
+    elif quality_score >= 8:
+        grade = 'A'
+    elif quality_score >= 6:
+        grade = 'B'
+    elif quality_score >= 4:
+        grade = 'C'
+    else:
+        grade = 'D'
+    
+    return {
+        'score': quality_score,
+        'grade': grade,
+        'factors': factors,
+        'recommendation': 'فرصة ذهبية!' if grade in ['A+', 'A'] else 'فرصة جيدة' if grade == 'B' else 'راقب' if grade == 'C' else 'تجنب'
+    }
+
 def calculate_confirmation_signals(indicators):
     latest = indicators.iloc[-1]
     prev = indicators.iloc[-2] if len(indicators) > 1 else latest
     confirmations = {}
     positive_count = 0
     
+    # 1. OBV
     if len(indicators) >= 5:
         obv_trend = latest['OBV'] > indicators['OBV'].iloc[-5]
         confirmations['obv'] = "صاعد" if obv_trend else "هابط"
@@ -225,6 +431,7 @@ def calculate_confirmation_signals(indicators):
     else:
         confirmations['obv'] = "غير محدد"
     
+    # 2. Stochastic
     stoch_k = latest['Stoch_K']
     if pd.notna(stoch_k):
         if stoch_k < 20:
@@ -238,6 +445,7 @@ def calculate_confirmation_signals(indicators):
     else:
         confirmations['stochastic'] = "غير محدد"
     
+    # 3. Candlestick
     pattern = detect_candlestick_pattern(indicators)
     confirmations['candlestick'] = pattern
     if pattern == "صاعد":
@@ -245,6 +453,7 @@ def calculate_confirmation_signals(indicators):
     elif pattern == "محايد":
         positive_count += 0.5
     
+    # 4. Volume Profile
     vol_profile = calculate_volume_profile(indicators)
     confirmations['volume_profile'] = vol_profile
     if vol_profile == "قوي":
@@ -252,6 +461,30 @@ def calculate_confirmation_signals(indicators):
     elif vol_profile == "متوسط":
         positive_count += 0.5
     
+    # 5. MACD Histogram
+    macd_hist = latest['MACD'] - latest['Signal']
+    prev_hist = prev['MACD'] - prev['Signal'] if len(indicators) > 1 else 0
+    if macd_hist > 0 and macd_hist > prev_hist:
+        confirmations['macd_histogram'] = "تزايد إيجابي"
+        positive_count += 1
+    elif macd_hist > 0:
+        confirmations['macd_histogram'] = "إيجابي"
+        positive_count += 0.5
+    else:
+        confirmations['macd_histogram'] = "سلبي"
+    
+    # 6. MA Alignment
+    if pd.notna(latest['SMA_20']) and pd.notna(latest['SMA_50']):
+        if latest['Close'] > latest['SMA_20'] > latest['SMA_50']:
+            confirmations['ma_alignment'] = "ترتيب صاعد"
+            positive_count += 1
+        elif latest['Close'] > latest['SMA_20']:
+            confirmations['ma_alignment'] = "جزئي صاعد"
+            positive_count += 0.5
+        else:
+            confirmations['ma_alignment'] = "هابط"
+    
+    # Bearish override
     macd = latest['MACD']
     rsi = latest['RSI']
     roc = latest['ROC']
@@ -261,9 +494,9 @@ def calculate_confirmation_signals(indicators):
         positive_count = min(positive_count, 1.5)
         verdict = "لا تدخل - اتجاه هابط!"
     else:
-        if positive_count >= 3:
+        if positive_count >= 4.5:
             verdict = "ادخل الآن!"
-        elif positive_count >= 2:
+        elif positive_count >= 3:
             verdict = "راقب - تحتاج تأكيد"
         else:
             verdict = "لا تدخل!"
@@ -271,94 +504,84 @@ def calculate_confirmation_signals(indicators):
     return {
         'signals': confirmations,
         'positive_count': round(positive_count, 1),
-        'total': 4,
+        'total': 6,
         'verdict': verdict
     }
 
-# NEW: Weight-based scoring functions
 def score_rsi(rsi):
-    """RSI scoring with smooth gradients (max 2.0 points)"""
     if pd.isna(rsi):
         return 0
     if 40 <= rsi <= 60:
-        return 2.0  # Perfect zone
+        return 2.0
     elif 35 <= rsi < 40:
-        return 1.5 + (rsi - 35) * 0.1  # 1.5 to 2.0
+        return 1.5 + (rsi - 35) * 0.1
     elif 60 < rsi <= 65:
-        return 2.0 - (rsi - 60) * 0.1  # 2.0 to 1.5
+        return 2.0 - (rsi - 60) * 0.1
     elif 30 <= rsi < 35:
-        return 1.0 + (rsi - 30) * 0.1  # 1.0 to 1.5
+        return 1.0 + (rsi - 30) * 0.1
     elif 65 < rsi <= 70:
-        return 1.5 - (rsi - 65) * 0.1  # 1.5 to 1.0
+        return 1.5 - (rsi - 65) * 0.1
     elif 25 <= rsi < 30:
-        return 0.5 + (rsi - 25) * 0.1  # 0.5 to 1.0
+        return 0.5 + (rsi - 25) * 0.1
     elif 70 < rsi <= 75:
-        return 1.0 - (rsi - 70) * 0.1  # 1.0 to 0.5
+        return 1.0 - (rsi - 70) * 0.1
     else:
         return 0
 
 def score_macd(macd, signal):
-    """MACD scoring with gradient (max 2.0 points)"""
     if pd.isna(macd) or pd.isna(signal):
         return 0
     
     diff = macd - signal
     
     if macd > 0 and diff > 0:
-        # Strong bullish
         strength = min(abs(macd), 5) / 5
-        return 1.5 + (strength * 0.5)  # 1.5 to 2.0
+        return 1.5 + (strength * 0.5)
     elif macd > 0 and diff <= 0:
-        # Bullish but weakening
         return 1.0
     elif macd <= 0 and diff > 0:
-        # Bearish but improving
         strength = min(abs(diff), 2) / 2
-        return 0.5 + (strength * 0.5)  # 0.5 to 1.0
+        return 0.5 + (strength * 0.5)
     else:
-        # Strong bearish
         return 0
 
 def score_adx(adx):
-    """ADX scoring with smooth gradient (max 2.0 points)"""
     if pd.isna(adx):
         return 0
     
     if adx >= 50:
-        return 2.0  # Very strong trend
+        return 2.0
     elif adx >= 40:
-        return 1.7 + (adx - 40) * 0.03  # 1.7 to 2.0
+        return 1.7 + (adx - 40) * 0.03
     elif adx >= 30:
-        return 1.4 + (adx - 30) * 0.03  # 1.4 to 1.7
+        return 1.4 + (adx - 30) * 0.03
     elif adx >= 25:
-        return 1.0 + (adx - 25) * 0.08  # 1.0 to 1.4
+        return 1.0 + (adx - 25) * 0.08
     elif adx >= 20:
-        return 0.5 + (adx - 20) * 0.1   # 0.5 to 1.0
+        return 0.5 + (adx - 20) * 0.1
     elif adx >= 15:
-        return 0.2 + (adx - 15) * 0.06  # 0.2 to 0.5
+        return 0.2 + (adx - 15) * 0.06
     else:
         return 0
 
 def score_roc(roc):
-    """ROC scoring with gradient (max 1.5 points)"""
     if pd.isna(roc):
         return 0
     
     if roc >= 15:
         return 1.5
     elif roc >= 10:
-        return 1.2 + (roc - 10) * 0.06  # 1.2 to 1.5
+        return 1.2 + (roc - 10) * 0.06
     elif roc >= 5:
-        return 0.8 + (roc - 5) * 0.08   # 0.8 to 1.2
+        return 0.8 + (roc - 5) * 0.08
     elif roc >= 0:
-        return 0.3 + (roc) * 0.1        # 0.3 to 0.8
+        return 0.3 + (roc) * 0.1
     elif roc >= -5:
-        return 0.3 + (roc + 5) * 0.06   # 0 to 0.3
+        return 0.3 + (roc + 5) * 0.06
     else:
         return 0
 
 def score_mfi(mfi):
-    """MFI scoring (max 1.0 point)"""
     if pd.isna(mfi):
         return 0
     
@@ -376,7 +599,6 @@ def score_mfi(mfi):
         return 0
 
 def score_volume(current_volume, avg_volume):
-    """Volume scoring (max 1.0 point)"""
     if avg_volume == 0:
         return 0
     
@@ -398,13 +620,12 @@ def score_volume(current_volume, avg_volume):
         return 0
 
 def score_trend_alignment(price, sma_20, sma_50):
-    """Trend alignment scoring (max 2.0 points)"""
     if pd.isna(sma_20) or pd.isna(sma_50):
         return 0
     
     if price > sma_20 and price > sma_50 and sma_20 > sma_50:
         distance_20 = (price - sma_20) / sma_20
-        if distance_20 > 0.1:  # Too far - potential reversal
+        if distance_20 > 0.1:
             return 1.5
         else:
             return 2.0
@@ -418,63 +639,43 @@ def score_trend_alignment(price, sma_20, sma_50):
         return 0
 
 def calculate_score(indicators, info):
-    """
-    NEW: Weight-based scoring system
-    Total possible: ~13 points
-    """
     latest = indicators.iloc[-1]
     prev = indicators.iloc[-2] if len(indicators) > 1 else latest
     
     score = 0
     
-    # 1. RSI (max 2.0)
     score += score_rsi(latest['RSI'])
-    
-    # 2. MACD (max 2.0)
     score += score_macd(latest['MACD'], latest['Signal'])
-    
-    # 3. Trend Alignment (max 2.0)
     score += score_trend_alignment(latest['Close'], latest['SMA_20'], latest['SMA_50'])
-    
-    # 4. ADX (max 2.0)
     score += score_adx(latest['ADX'])
-    
-    # 5. ROC (max 1.5)
     score += score_roc(latest['ROC'])
-    
-    # 6. MFI (max 1.0)
     score += score_mfi(latest['MFI'])
     
-    # 7. Volume (max 1.0)
     current_volume = latest['Volume']
     avg_volume = indicators['Volume'].tail(20).mean()
     score += score_volume(current_volume, avg_volume)
     
-    # 8. Bollinger Bands position (max 0.5)
     price = latest['Close']
     if pd.notna(latest['BB_Lower']) and price <= latest['BB_Lower']:
         score += 0.5
     
-    # 9. ATR check (max 0.5)
     atr = latest['ATR']
     if atr < price * 0.05:
         score += 0.5
     
-    # 10. Gap check (max 0.5)
     if len(indicators) > 1:
         gap = abs(latest['Open'] - prev['Close']) / prev['Close']
         if gap < 0.02:
             score += 0.5
     
-    # Confirmation bonus/penalty (±2.0)
     confirmation = calculate_confirmation_signals(indicators)
     conf_score = confirmation['positive_count']
     
-    if conf_score >= 3.5:
+    if conf_score >= 5:
         score += 2.0
-    elif conf_score >= 3:
+    elif conf_score >= 4:
         score += 1.5
-    elif conf_score >= 2.5:
+    elif conf_score >= 3:
         score += 0.5
     elif conf_score >= 2:
         score += 0
@@ -486,7 +687,7 @@ def calculate_score(indicators, info):
     return max(0, round(score, 1))
 
 def calculate_targets_advanced(price, confirmation_score, atr, support_resistance):
-    if confirmation_score >= 3:
+    if confirmation_score >= 4:
         target_short = support_resistance.get('resistance_1') or round(price + (atr * 2), 2)
         target_medium = support_resistance.get('resistance_2') or round(price + (atr * 3), 2)
         stop_loss = support_resistance.get('support_1') or round(price - (atr * 1.5), 2)
@@ -527,7 +728,7 @@ def validate_claude_response(response_text, data, targets, support_resistance):
     for price_str in price_mentions:
         price_float = float(price_str)
         if abs(price_float - current_price) > current_price * 1.5:
-            errors.append(f"رقم مشكوك فيه: ${price_str} (السعر: ${current_price})")
+            errors.append(f"رقم مشكوك فيه: ${price_str}")
     date_mentions = re.findall(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', response_text)
     current_year = datetime.now().year
     for month, year in date_mentions:
@@ -555,8 +756,8 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "7.0.0",
-        "description": "Weight-based scoring system with smooth gradients",
+        "version": "7.1.0",
+        "description": "Super Edition - Position risk, late entry detection, R/R ratio, quality grading, momentum scoring",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
             "/analysis/{symbol}": "Get detailed analysis for any stock"
@@ -620,6 +821,34 @@ async def get_detailed_analysis(symbol: str):
     latest = indicators.iloc[-1]
     atr = latest['ATR']
     targets = calculate_targets_advanced(data['price'], confirmation['positive_count'], atr, support_resistance)
+    
+    position_risk = check_position_risk(
+        data['price'], 
+        support_resistance.get('resistance_1'), 
+        support_resistance.get('support_1')
+    )
+    
+    late_entry = detect_late_entry(indicators)
+    
+    risk_reward = calculate_risk_reward(
+        data['price'], 
+        targets['target_short'], 
+        targets['stop_loss']
+    )
+    
+    momentum = calculate_momentum_score(indicators)
+    
+    recent_performance = analyze_recent_performance(indicators)
+    
+    opportunity_quality = calculate_opportunity_quality(
+        score, 
+        indicators, 
+        support_resistance, 
+        position_risk, 
+        late_entry, 
+        momentum
+    )
+    
     prev_close = data['history']['Close'].iloc[-2] if len(data['history']) > 1 else latest['Close']
     change = latest['Close'] - prev_close
     change_pct = (change / prev_close) * 100
@@ -635,6 +864,7 @@ async def get_detailed_analysis(symbol: str):
     volume_trend = "صاعد" if current_volume > avg_volume else "هابط"
     is_unusual_volume = bool(abs(volume_diff_pct) > 50)
     daily_trend = "صاعد" if change_pct > 0 else "هابط"
+    
     analysis_data = {
         "symbol": symbol,
         "name": data['name'],
@@ -646,6 +876,12 @@ async def get_detailed_analysis(symbol: str):
         "confirmation": confirmation,
         "targets": targets,
         "support_resistance": support_resistance,
+        "position_risk": position_risk,
+        "late_entry_warning": late_entry,
+        "risk_reward": risk_reward,
+        "momentum_analysis": momentum,
+        "recent_performance": recent_performance,
+        "opportunity_quality": opportunity_quality,
         "indicators": {
             "rsi": round(latest['RSI'], 2),
             "macd": round(latest['MACD'], 4),
@@ -684,9 +920,10 @@ async def get_detailed_analysis(symbol: str):
             "sector_strength": "متوسط"
         }
     }
+    
     try:
         client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        if confirmation['positive_count'] >= 3:
+        if confirmation['positive_count'] >= 4:
             trading_days = 7
         elif confirmation['positive_count'] >= 2:
             trading_days = 5
@@ -706,76 +943,66 @@ async def get_detailed_analysis(symbol: str):
         trend_warning = ""
         if is_bearish:
             trend_warning = f"""
-⚠️⚠️⚠️ BEARISH TREND DETECTED:
+⚠️⚠️⚠️ BEARISH TREND:
 - MACD: {latest['MACD']:.2f} (سالب!)
 - RSI: {latest['RSI']:.2f} (ضعيف!)
 - ROC: {latest['ROC']:.2f}% (سالب!)
-- السعر تحت SMA-20 و SMA-50
-
-هذا سهم في اتجاه هابط!
-لا تقل "ادخل الآن" أو "دخول فوري"
-قل "احذر - اتجاه هابط" أو "انتظر استقرار"
+لا تقل "ادخل الآن" - قل "احذر - اتجاه هابط"
 """
         
-        prompt = f"""⚠️⚠️⚠️ CRITICAL INSTRUCTIONS - اقرأ بعناية ⚠️⚠️⚠️
+        position_warning = ""
+        if position_risk['warnings']:
+            position_warning = "\n⚠️ تحذير المكان:\n" + "\n".join(position_risk['warnings'])
+        
+        late_entry_warning = ""
+        if late_entry['warnings']:
+            late_entry_warning = "\n⚠️ تحذير نهاية الموجة:\n" + "\n".join(late_entry['warnings'])
+        
+        prompt = f"""⚠️⚠️⚠️ CRITICAL INSTRUCTIONS ⚠️⚠️⚠️
 
-التاريخ الحالي: {current_date}
-الشهر الحالي: {current_month_year}
+التاريخ: {current_date}
 
 {trend_warning}
+{position_warning}
+{late_entry_warning}
 
-البيانات الدقيقة - استخدمها فقط:
-- السعر الحالي: ${data['price']:.2f}
-- MACD: {latest['MACD']:.4f}
-- RSI: {latest['RSI']:.2f}
-- ROC: {latest['ROC']:.2f}%
-- المقاومة 1: ${r1}
-- المقاومة 2: ${r2}
-- الدعم 1: ${s1}
-- Stop Loss المحسوب: ${sl:.2f}
+البيانات:
+- السعر: ${data['price']:.2f}
+- النقاط: {score}/13
+- Grade: {opportunity_quality['grade']}
+- R/R: {risk_reward['ratio'] if risk_reward else 'N/A'}
+- الزخم: {momentum['strength']} ({momentum['score']}/10)
+- المقاومة: ${r1}
+- الدعم: ${s1}
+- Stop Loss: ${sl:.2f}
 
-⚠️ قواعد صارمة:
-1. استخدم الأرقام المذكورة أعلاه فقط
-2. لا تخترع أرقام جديدة
-3. التواريخ المستقبلية فقط (بعد {current_month_year})
-4. لا تذكر 2024 أو 2025 أبداً
-5. Stop Loss دائماً = ${sl:.2f}
-6. إذا MACD سالب و RSI < 40: لا تقل "ادخل الآن"!
+قواعد:
+1. استخدم الأرقام المذكورة فقط
+2. تواريخ مستقبلية فقط
+3. Stop Loss = ${sl:.2f}
+4. إذا Grade = D: لا تقل "ادخل"!
 
-عند ذكر مقاومة: استخدم ${r1} أو ${r2}
-عند ذكر دعم: استخدم ${s1}
-عند ذكر وقف خسارة: استخدم ${sl:.2f}
-عند ذكر تواريخ: استخدم {next_month} أو ما بعده
-
-السهم: {symbol} - {data['name']}
-النقاط: {score}/13
-التأكيد: {confirmation['positive_count']}/4 = {confirmation['verdict']}
-
-أعطني JSON فقط (بدون ```json):
+JSON فقط:
 {{
-  "confidence": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
-  "success_rating": {round(confirmation['positive_count'] * 2.5, 1)},
-  "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 20)))},
+  "confidence": {min(85, max(25, int(confirmation['positive_count'] * 15)))},
+  "success_rating": {round(confirmation['positive_count'] * 1.8, 1)},
+  "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 15)))},
   "valid_until": "{valid_until}",
   "trading_days": {trading_days},
-  "summary": "ملخص يتوافق مع المؤشرات الحقيقية",
-  "risks": ["مخاطرة 1", "مخاطرة 2", "مخاطرة 3"],
+  "summary": "ملخص مع Grade و R/R",
+  "risks": ["خطر 1", "خطر 2", "خطر 3"],
   "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
-  "alerts": ["تنبيه بدون أرقام مخترعة", "تنبيه بتواريخ مستقبلية فقط"],
+  "alerts": ["تنبيه"],
   "sector_flow": "تحليل السيولة",
-  "historical_success": "نسبة النجاح التاريخية",
-  "recommendation": "توصية واقعية تتوافق مع المؤشرات",
+  "historical_success": "نسبة",
+  "recommendation": "توصية",
   "glossary": {{
-    "RSI": "مؤشر القوة النسبية - يقيس زخم حركة السعر",
-    "MACD": "تقارب وتباعد المتوسطات - يكشف التغيرات في القوة",
-    "OBV": "حجم التوازن - يتتبع تدفق الأموال",
-    "Stochastic": "مذبذب عشوائي - يكشف التشبع",
-    "Candlestick": "الشموع اليابانية - أنماط السعر",
-    "Volume Profile": "ملف الحجم - توزيع السيولة",
-    "EMA": "المتوسط المتحرك الأسي - أسرع استجابة",
-    "Support": "الدعم - مستوى الارتداد"
+    "RSI": "مؤشر القوة النسبية",
+    "Grade": "تقييم الجودة (A+ إلى D)",
+    "R/R": "نسبة المخاطرة/العائد"
   }}
 }}"""
+        
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
@@ -791,10 +1018,6 @@ async def get_detailed_analysis(symbol: str):
         response_text = response_text.strip()
         
         validation_errors = validate_claude_response(response_text, data, targets, support_resistance)
-        if validation_errors:
-            print(f"⚠️ Claude validation warnings for {symbol}:")
-            for error in validation_errors:
-                print(f"  - {error}")
         
         import json
         claude_analysis = json.loads(response_text)
@@ -804,6 +1027,7 @@ async def get_detailed_analysis(symbol: str):
         print(f"Claude API error: {str(e)}")
         analysis_data["claude_analysis"] = None
         analysis_data["validation_warnings"] = None
+    
     cache[cache_key] = analysis_data
     return analysis_data
 
