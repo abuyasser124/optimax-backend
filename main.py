@@ -8,9 +8,6 @@ import anthropic
 import os
 from cachetools import TTLCache
 import re
-import sqlite3
-from pydantic import BaseModel
-from typing import Optional
 
 app = FastAPI(title="OptiMax Stock Analysis API", version="7.2.0")
 
@@ -36,54 +33,6 @@ SHARIAH_STOCKS = [
     "MRNA", "ALGN", "ENPH", "DLTR", "LCID", "RIVN", "BMRN", "NTES", "JD", "BIDU",
     "PDD", "BILI", "LI", "XPEV", "NIO", "BABA", "TME", "VIPS", "AMGN"
 ]
-
-def init_database():
-    conn = sqlite3.connect('optimax_recommendations.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS recommendations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL,
-            name TEXT NOT NULL,
-            date TEXT NOT NULL,
-            score REAL,
-            signal TEXT,
-            entry_price REAL,
-            confirmation_score REAL,
-            confirmation_verdict TEXT,
-            target_short REAL,
-            target_medium REAL,
-            stop_loss REAL,
-            rsi REAL,
-            macd REAL,
-            adx REAL,
-            grade TEXT,
-            risk_reward_ratio REAL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_database()
-
-class RecommendationData(BaseModel):
-    symbol: str
-    name: str
-    date: str
-    score: float
-    signal: str
-    entry_price: float
-    confirmation_score: float
-    confirmation_verdict: str
-    target_short: float
-    target_medium: float
-    stop_loss: float
-    rsi: float
-    macd: float
-    adx: float
-    grade: Optional[str] = None
-    risk_reward_ratio: Optional[float] = None
 
 def calculate_trading_days_ahead(start_date, num_days):
     current = start_date
@@ -842,103 +791,12 @@ async def root():
     return {
         "name": "OptiMax Stock Analysis API",
         "version": "7.2.0",
-        "description": "Ultra Edition - Comprehensive analysis with SQLite backend",
+        "description": "Ultra Edition - Comprehensive analysis",
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
-            "/analysis/{symbol}": "Get detailed analysis for any stock",
-            "/save-recommendation": "Save a recommendation",
-            "/saved-recommendations": "Get all saved recommendations",
-            "/delete-recommendation/{id}": "Delete a recommendation",
-            "/delete-all-recommendations": "Delete all recommendations"
+            "/analysis/{symbol}": "Get detailed analysis for any stock"
         }
     }
-
-@app.post("/save-recommendation")
-async def save_recommendation(data: RecommendationData):
-    try:
-        conn = sqlite3.connect('optimax_recommendations.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO recommendations 
-            (symbol, name, date, score, signal, entry_price, confirmation_score, 
-             confirmation_verdict, target_short, target_medium, stop_loss, rsi, macd, adx, grade, risk_reward_ratio)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data.symbol, data.name, data.date, data.score, data.signal,
-            data.entry_price, data.confirmation_score, data.confirmation_verdict,
-            data.target_short, data.target_medium, data.stop_loss,
-            data.rsi, data.macd, data.adx, data.grade, data.risk_reward_ratio
-        ))
-        conn.commit()
-        rec_id = cursor.lastrowid
-        conn.close()
-        return {"success": True, "id": rec_id, "message": "تم الحفظ بنجاح!"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.get("/saved-recommendations")
-async def get_saved_recommendations():
-    try:
-        conn = sqlite3.connect('optimax_recommendations.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT id, symbol, name, date, score, signal, entry_price, 
-                   confirmation_score, confirmation_verdict, target_short, 
-                   target_medium, stop_loss, rsi, macd, adx, grade, risk_reward_ratio, created_at
-            FROM recommendations 
-            ORDER BY created_at DESC
-        ''')
-        rows = cursor.fetchall()
-        conn.close()
-        recommendations = []
-        for row in rows:
-            recommendations.append({
-                'id': row[0],
-                'symbol': row[1],
-                'name': row[2],
-                'date': row[3],
-                'score': row[4],
-                'signal': row[5],
-                'entry_price': row[6],
-                'confirmation_score': row[7],
-                'confirmation_verdict': row[8],
-                'target_short': row[9],
-                'target_medium': row[10],
-                'stop_loss': row[11],
-                'rsi': row[12],
-                'macd': row[13],
-                'adx': row[14],
-                'grade': row[15],
-                'risk_reward_ratio': row[16],
-                'created_at': row[17]
-            })
-        return {"success": True, "recommendations": recommendations}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.delete("/delete-recommendation/{rec_id}")
-async def delete_recommendation(rec_id: int):
-    try:
-        conn = sqlite3.connect('optimax_recommendations.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM recommendations WHERE id = ?', (rec_id,))
-        conn.commit()
-        conn.close()
-        return {"success": True, "message": "تم الحذف بنجاح!"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-@app.delete("/delete-all-recommendations")
-async def delete_all_recommendations():
-    try:
-        conn = sqlite3.connect('optimax_recommendations.db')
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM recommendations')
-        conn.commit()
-        conn.close()
-        return {"success": True, "message": "تم حذف جميع التوصيات!"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 @app.get("/top-opportunities")
 async def get_top_opportunities(limit: int = 10):
