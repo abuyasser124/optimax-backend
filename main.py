@@ -8,8 +8,9 @@ import anthropic
 import os
 from cachetools import TTLCache
 import re
+import json
 
-app = FastAPI(title="OptiMax Stock Analysis API", version="7.2.0")
+app = FastAPI(title="OptiMax Stock Analysis API", version="8.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -211,6 +212,393 @@ def calculate_indicators(hist):
     df['Stoch_K'], df['Stoch_D'] = calculate_stochastic(df)
     return df
 
+def analyze_technical_signals(indicators, volume_analysis):
+    """
+    المرحلة 1: تحليل الإشارات الفنية البسيط
+    يعطي كل مؤشر: حالة + نقاط + وزن
+    """
+    latest = indicators.iloc[-1]
+    prev = indicators.iloc[-2] if len(indicators) > 1 else latest
+    signals_analysis = []
+    
+    # 1. RSI
+    rsi = latest['RSI']
+    if pd.notna(rsi):
+        if 40 <= rsi <= 60:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '⚪ محايد', 'score': 1.8, 'max': 2.0, 'interpretation': 'منطقة متوازنة'}
+        elif 35 <= rsi < 40:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🟢 إيجابي', 'score': 1.6, 'max': 2.0, 'interpretation': 'قرب منطقة شراء'}
+        elif 60 < rsi <= 65:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🟢 إيجابي', 'score': 1.6, 'max': 2.0, 'interpretation': 'قوة معتدلة'}
+        elif 30 <= rsi < 35:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🟢 فرصة شراء', 'score': 1.4, 'max': 2.0, 'interpretation': 'تشبع بيعي'}
+        elif 65 < rsi <= 70:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🟡 حذر', 'score': 1.2, 'max': 2.0, 'interpretation': 'قرب التشبع'}
+        elif rsi > 70:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🔴 تشبع شرائي', 'score': 0.5, 'max': 2.0, 'interpretation': 'احتمال تصحيح'}
+        elif rsi < 30:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '🟢 فرصة قوية', 'score': 2.0, 'max': 2.0, 'interpretation': 'تشبع بيعي حاد'}
+        else:
+            rsi_data = {'name': 'RSI', 'value': rsi, 'status': '⚪ محايد', 'score': 1.0, 'max': 2.0, 'interpretation': 'حالة عادية'}
+        signals_analysis.append(rsi_data)
+    
+    # 2. MACD
+    macd = latest['MACD']
+    signal = latest['Signal']
+    if pd.notna(macd) and pd.notna(signal):
+        diff = macd - signal
+        if macd > 0 and diff > 0:
+            macd_data = {'name': 'MACD', 'value': macd, 'status': '🟢 إيجابي قوي', 'score': 2.0, 'max': 2.0, 'interpretation': 'اتجاه صاعد قوي'}
+        elif macd > 0 and diff <= 0:
+            macd_data = {'name': 'MACD', 'value': macd, 'status': '🟡 إيجابي ضعيف', 'score': 1.2, 'max': 2.0, 'interpretation': 'بداية ضعف'}
+        elif macd <= 0 and diff > 0:
+            macd_data = {'name': 'MACD', 'value': macd, 'status': '🟢 بداية انعكاس', 'score': 1.0, 'max': 2.0, 'interpretation': 'إشارة شراء محتملة'}
+        else:
+            macd_data = {'name': 'MACD', 'value': macd, 'status': '🔴 سلبي', 'score': 0.0, 'max': 2.0, 'interpretation': 'اتجاه هابط'}
+        signals_analysis.append(macd_data)
+    
+    # 3. ADX
+    adx = latest['ADX']
+    if pd.notna(adx):
+        if adx >= 40:
+            adx_data = {'name': 'ADX', 'value': adx, 'status': '🟢 اتجاه قوي جداً', 'score': 2.0, 'max': 2.0, 'interpretation': 'ترند واضح'}
+        elif adx >= 25:
+            adx_data = {'name': 'ADX', 'value': adx, 'status': '🟢 اتجاه واضح', 'score': 1.4, 'max': 2.0, 'interpretation': 'قوة متوسطة'}
+        elif adx >= 20:
+            adx_data = {'name': 'ADX', 'value': adx, 'status': '🟡 اتجاه ضعيف', 'score': 0.7, 'max': 2.0, 'interpretation': 'بداية اتجاه'}
+        else:
+            adx_data = {'name': 'ADX', 'value': adx, 'status': '⚪ لا يوجد اتجاه', 'score': 0.2, 'max': 2.0, 'interpretation': 'سوق عرضي'}
+        signals_analysis.append(adx_data)
+    
+    # 4. MFI
+    mfi = latest['MFI']
+    if pd.notna(mfi):
+        if 40 <= mfi <= 60:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '⚪ محايد', 'score': 1.0, 'max': 1.0, 'interpretation': 'تدفق متوازن'}
+        elif 30 <= mfi < 40:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '🟢 إيجابي', 'score': 0.8, 'max': 1.0, 'interpretation': 'تدفق إيجابي'}
+        elif 60 < mfi <= 70:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '🟡 حذر', 'score': 0.6, 'max': 1.0, 'interpretation': 'قرب التشبع'}
+        elif mfi > 70:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '🔴 تشبع شرائي', 'score': 0.3, 'max': 1.0, 'interpretation': 'تدفق مبالغ'}
+        elif mfi < 30:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '🟢 فرصة', 'score': 1.0, 'max': 1.0, 'interpretation': 'تشبع بيعي'}
+        else:
+            mfi_data = {'name': 'MFI', 'value': mfi, 'status': '⚪ عادي', 'score': 0.5, 'max': 1.0, 'interpretation': 'حالة طبيعية'}
+        signals_analysis.append(mfi_data)
+    
+    # 5. ROC
+    roc = latest['ROC']
+    if pd.notna(roc):
+        if roc >= 10:
+            roc_data = {'name': 'ROC', 'value': roc, 'status': '🟢 قوي جداً', 'score': 1.5, 'max': 1.5, 'interpretation': 'زخم قوي'}
+        elif roc >= 5:
+            roc_data = {'name': 'ROC', 'value': roc, 'status': '🟢 قوي', 'score': 1.2, 'max': 1.5, 'interpretation': 'زخم جيد'}
+        elif roc >= 0:
+            roc_data = {'name': 'ROC', 'value': roc, 'status': '🟢 إيجابي', 'score': 0.6, 'max': 1.5, 'interpretation': 'نمو خفيف'}
+        elif roc >= -5:
+            roc_data = {'name': 'ROC', 'value': roc, 'status': '🔴 سلبي', 'score': 0.3, 'max': 1.5, 'interpretation': 'تراجع خفيف'}
+        else:
+            roc_data = {'name': 'ROC', 'value': roc, 'status': '🔴 سلبي قوي', 'score': 0.0, 'max': 1.5, 'interpretation': 'هبوط قوي'}
+        signals_analysis.append(roc_data)
+    
+    # 6. Volume
+    vol_diff = volume_analysis['difference_pct']
+    if vol_diff > 50:
+        vol_data = {'name': 'Volume', 'value': vol_diff, 'status': '🟢 قوي جداً', 'score': 1.0, 'max': 1.0, 'interpretation': 'اهتمام كبير'}
+    elif vol_diff > 20:
+        vol_data = {'name': 'Volume', 'value': vol_diff, 'status': '🟢 قوي', 'score': 0.8, 'max': 1.0, 'interpretation': 'نشاط جيد'}
+    elif vol_diff > -20:
+        vol_data = {'name': 'Volume', 'value': vol_diff, 'status': '⚪ متوسط', 'score': 0.5, 'max': 1.0, 'interpretation': 'حجم عادي'}
+    elif vol_diff > -50:
+        vol_data = {'name': 'Volume', 'value': vol_diff, 'status': '🟡 ضعيف', 'score': 0.2, 'max': 1.0, 'interpretation': 'قلة اهتمام'}
+    else:
+        vol_data = {'name': 'Volume', 'value': vol_diff, 'status': '🔴 ضعيف جداً', 'score': 0.0, 'max': 1.0, 'interpretation': 'حجم منخفض جداً'}
+    signals_analysis.append(vol_data)
+    
+    # 7. Trend Alignment
+    price = latest['Close']
+    sma_20 = latest['SMA_20']
+    sma_50 = latest['SMA_50']
+    if pd.notna(sma_20) and pd.notna(sma_50):
+        if price > sma_20 > sma_50:
+            trend_data = {'name': 'Trend Alignment', 'value': price, 'status': '🟢 ترتيب صاعد', 'score': 2.0, 'max': 2.0, 'interpretation': 'اتجاه قوي'}
+        elif price > sma_20:
+            trend_data = {'name': 'Trend Alignment', 'value': price, 'status': '🟢 جزئي صاعد', 'score': 1.2, 'max': 2.0, 'interpretation': 'اتجاه معتدل'}
+        elif price > sma_50:
+            trend_data = {'name': 'Trend Alignment', 'value': price, 'status': '🟡 ضعيف', 'score': 0.6, 'max': 2.0, 'interpretation': 'اتجاه خفيف'}
+        else:
+            trend_data = {'name': 'Trend Alignment', 'value': price, 'status': '🔴 هابط', 'score': 0.0, 'max': 2.0, 'interpretation': 'اتجاه سلبي'}
+        signals_analysis.append(trend_data)
+    
+    # 8. Stochastic
+    stoch = latest['Stoch_K']
+    if pd.notna(stoch):
+        if stoch < 20:
+            stoch_data = {'name': 'Stochastic', 'value': stoch, 'status': '🟢 فرصة شراء', 'score': 1.0, 'max': 1.0, 'interpretation': 'تشبع بيعي'}
+        elif stoch < 50:
+            stoch_data = {'name': 'Stochastic', 'value': stoch, 'status': '🟢 إيجابي', 'score': 0.7, 'max': 1.0, 'interpretation': 'منطقة سفلية'}
+        elif stoch < 80:
+            stoch_data = {'name': 'Stochastic', 'value': stoch, 'status': '⚪ محايد', 'score': 0.5, 'max': 1.0, 'interpretation': 'منطقة وسطى'}
+        else:
+            stoch_data = {'name': 'Stochastic', 'value': stoch, 'status': '🔴 تشبع شرائي', 'score': 0.0, 'max': 1.0, 'interpretation': 'حذر'}
+        signals_analysis.append(stoch_data)
+    
+    # 9. OBV
+    if len(indicators) >= 5:
+        if latest['OBV'] > indicators['OBV'].iloc[-5]:
+            obv_data = {'name': 'OBV', 'value': latest['OBV'], 'status': '🟢 صاعد', 'score': 1.0, 'max': 1.0, 'interpretation': 'تدفق نقدي إيجابي'}
+        else:
+            obv_data = {'name': 'OBV', 'value': latest['OBV'], 'status': '🔴 هابط', 'score': 0.0, 'max': 1.0, 'interpretation': 'تدفق نقدي سلبي'}
+        signals_analysis.append(obv_data)
+    
+    # 10. Candlestick
+    pattern = detect_candlestick_pattern(indicators)
+    if pattern == "صاعد":
+        candle_data = {'name': 'Candlestick', 'value': 0, 'status': '🟢 صاعد', 'score': 1.0, 'max': 1.0, 'interpretation': 'نموذج إيجابي'}
+    elif pattern == "هابط":
+        candle_data = {'name': 'Candlestick', 'value': 0, 'status': '🔴 هابط', 'score': 0.0, 'max': 1.0, 'interpretation': 'نموذج سلبي'}
+    else:
+        candle_data = {'name': 'Candlestick', 'value': 0, 'status': '⚪ محايد', 'score': 0.5, 'max': 1.0, 'interpretation': 'لا إشارة واضحة'}
+    signals_analysis.append(candle_data)
+    
+    # الخلاصة
+    total_score = sum(s['score'] for s in signals_analysis)
+    total_max = sum(s['max'] for s in signals_analysis)
+    
+    positive_count = len([s for s in signals_analysis if '🟢' in s['status']])
+    neutral_count = len([s for s in signals_analysis if '⚪' in s['status'] or '🟡' in s['status']])
+    negative_count = len([s for s in signals_analysis if '🔴' in s['status']])
+    
+    percentage = (total_score / total_max) * 100 if total_max > 0 else 0
+    
+    if percentage >= 75:
+        overall = 'قوية جداً'
+    elif percentage >= 60:
+        overall = 'قوية'
+    elif percentage >= 45:
+        overall = 'متوسطة'
+    elif percentage >= 30:
+        overall = 'ضعيفة'
+    else:
+        overall = 'ضعيفة جداً'
+    
+    return {
+        'signals': signals_analysis,
+        'total_score': round(total_score, 1),
+        'total_max': round(total_max, 1),
+        'percentage': round(percentage, 1),
+        'positive_count': positive_count,
+        'neutral_count': neutral_count,
+        'negative_count': negative_count,
+        'overall_assessment': overall
+    }
+
+def get_claude_deep_analysis(
+    symbol,
+    price,
+    change_pct,
+    technical_signals,
+    support_resistance,
+    momentum,
+    risk_reward,
+    opportunity_quality,
+    position_risk,
+    late_entry,
+    volume_analysis,
+    indicators,
+    recent_performance
+):
+    """
+    المرحلة 2: تحليل Claude AI المتقدم والشامل
+    """
+    
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        
+        latest = indicators.iloc[-1]
+        
+        # بناء تفاصيل المؤشرات
+        signals_detail = "\n".join([
+            f"- {s['name']}: {s['value']:.2f if isinstance(s['value'], (int, float)) else s['value']} | {s['status']} | الوزن: {s['score']:.1f}/{s['max']:.1f} | {s['interpretation']}"
+            for s in technical_signals['signals']
+        ])
+        
+        # معلومات الدعم والمقاومة
+        r1 = support_resistance.get('resistance_1')
+        r2 = support_resistance.get('resistance_2')
+        s1 = support_resistance.get('support_1')
+        s2 = support_resistance.get('support_2')
+        
+        dist_r1 = ((r1 - price) / price * 100) if r1 else None
+        dist_s1 = ((price - s1) / price * 100) if s1 else None
+        
+        prompt = f"""أنت محلل مالي خبير متخصص في التحليل الفني الدقيق. مهمتك: تقديم تحليل شامل ومفصل ومنظم بدقة عالية.
+
+═══════════════════════════════════════════════════════
+📊 بيانات السهم: {symbol}
+═══════════════════════════════════════════════════════
+
+💰 السعر الحالي: ${price:.2f}
+📈 التغير اليومي: {change_pct:+.2f}%
+
+───────────────────────────────────────────────────────
+📊 المؤشرات الفنية التفصيلية:
+───────────────────────────────────────────────────────
+
+{signals_detail}
+
+📈 النتيجة الفنية الإجمالية: {technical_signals['total_score']:.1f}/{technical_signals['total_max']:.1f} ({technical_signals['percentage']:.1f}%)
+🎯 التقييم العام: {technical_signals['overall_assessment']}
+✅ إشارات إيجابية: {technical_signals['positive_count']}
+⚪ إشارات محايدة: {technical_signals['neutral_count']}
+❌ إشارات سلبية: {technical_signals['negative_count']}
+
+───────────────────────────────────────────────────────
+📍 مستويات الدعم والمقاومة:
+───────────────────────────────────────────────────────
+
+السعر الحالي: ${price:.2f}
+المقاومة 1: ${r1:.2f if r1 else 'غير موجودة'} ({dist_r1:+.1f}% أعلى)
+المقاومة 2: ${r2:.2f if r2 else 'غير موجودة'}
+الدعم 1: ${s1:.2f if s1 else 'غير موجود'} ({dist_s1:-.1f}% أسفل)
+الدعم 2: ${s2:.2f if s2 else 'غير موجود'}
+
+تحذيرات المكان: {', '.join(position_risk['warnings']) if position_risk['warnings'] else 'لا توجد'}
+فرص المكان: {', '.join(position_risk['opportunities']) if position_risk['opportunities'] else 'لا توجد'}
+
+───────────────────────────────────────────────────────
+⚡ تحليل الزخم:
+───────────────────────────────────────────────────────
+
+نقاط الزخم: {momentum['score']}/10
+قوة الزخم: {momentum['strength']}
+
+المكونات:
+- ROC: {latest['ROC']:.2f}%
+- MACD: {latest['MACD']:.4f}
+- RSI Momentum: {'صاعد' if latest['RSI'] > 50 else 'هابط'}
+- Volume: {volume_analysis['difference_pct']:+.1f}%
+
+───────────────────────────────────────────────────────
+💰 تحليل المخاطرة والعائد:
+───────────────────────────────────────────────────────
+
+نسبة R/R: {risk_reward['ratio']:.2f if risk_reward else 'N/A'}
+العائد المحتمل: {risk_reward['potential_gain']:.1f}% if risk_reward else 'N/A'}
+الخسارة المحتملة: {risk_reward['potential_loss']:.1f}% if risk_reward else 'N/A'}
+التقييم: {risk_reward['verdict'] if risk_reward else 'N/A'}
+
+───────────────────────────────────────────────────────
+🏆 تقييم جودة الفرصة:
+───────────────────────────────────────────────────────
+
+Grade: {opportunity_quality['grade']}
+النقاط: {opportunity_quality['score']:.1f}/12
+العوامل: {', '.join(opportunity_quality['factors'])}
+
+───────────────────────────────────────────────────────
+⚠️ تحذيرات إضافية:
+───────────────────────────────────────────────────────
+
+تحذيرات الدخول المتأخر: {', '.join(late_entry['warnings']) if late_entry['warnings'] else 'لا توجد'}
+مستوى المخاطرة: {late_entry['risk_level']}
+
+الأداء الأخير (5 أيام):
+- الاتجاه: {recent_performance['trend']}
+- أيام إيجابية: {recent_performance['positive_days']}/5
+- متوسط التغير: {recent_performance['avg_daily_change']:.2f}%
+
+═══════════════════════════════════════════════════════
+🎯 المطلوب منك:
+═══════════════════════════════════════════════════════
+
+قدم تحليلاً شاملاً ومفصلاً بصيغة JSON تحتوي على:
+
+1. **detailed_indicators**: تحليل تفصيلي لأهم 6-8 مؤشرات فنية
+   - لكل مؤشر: الاسم، الحالة، التفسير العميق، الوزن، التأثير على القرار
+
+2. **support_resistance_analysis**: 
+   - تحليل موقع السعر بالنسبة للدعم/المقاومة
+   - المخاطر المحتملة
+   - الفرص المتاحة
+   - توصيات الدخول/الخروج
+
+3. **momentum_analysis**:
+   - تحليل مكونات الزخم
+   - قوة الاتجاه
+   - استدامة الحركة
+
+4. **risk_reward_analysis**:
+   - تقييم دقيق للمخاطرة/العائد
+   - هل يستحق الدخول؟
+   - متى الدخول الأفضل؟
+
+5. **opportunity_quality_analysis**:
+   - شرح Grade
+   - العوامل الإيجابية والسلبية
+   - التوصية
+
+6. **volume_and_liquidity**:
+   - تحليل حجم التداول
+   - السيولة
+   - قوة الحركة
+
+7. **final_recommendation**:
+   - القرار النهائي: (ادخل الآن / راقب / لا تدخل)
+   - التحليل الشامل (3-5 جمل)
+   - الأسباب الرئيسية (3-5 نقاط)
+   - البدائل المقترحة
+   - شروط الدخول (إن وجدت)
+   - درجة الثقة (0-100)
+   - احتمالية النجاح (0-100)
+
+⚠️ ملاحظات مهمة:
+- كن دقيقاً ومفصلاً
+- استخدم الأرقام الموجودة فقط
+- لا تخترع أرقاماً
+- كن موضوعياً
+- التحليل يجب أن يكون عميقاً واحترافياً
+
+أرجع JSON فقط بدون أي نص إضافي.
+"""
+        
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        response_text = message.content[0].text.strip()
+        
+        # تنظيف JSON
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+        
+        claude_analysis = json.loads(response_text)
+        
+        return claude_analysis
+        
+    except Exception as e:
+        print(f"Claude API error: {str(e)}")
+        return {
+            "error": str(e),
+            "detailed_indicators": [],
+            "final_recommendation": {
+                "decision": "خطأ في التحليل",
+                "comprehensive_analysis": "حدث خطأ أثناء معالجة التحليل",
+                "reasons": ["خطأ فني"],
+                "alternatives": "يرجى المحاولة مرة أخرى",
+                "confidence": 0,
+                "success_probability": 0
+            }
+        }
+
 def analyze_recent_performance(indicators):
     recent_5d = indicators.tail(5)
     daily_changes = recent_5d['Close'].pct_change()
@@ -326,14 +714,18 @@ def calculate_risk_reward(price, target, stop_loss):
 def calculate_opportunity_quality(score, indicators, support_resistance, position_risk, late_entry, momentum, risk_reward=None):
     quality_score = 0
     factors = []
-    if score >= 11:
+    
+    percentage = (score / 14.5) * 100
+    
+    if percentage >= 75:
         quality_score += 3
         factors.append('نقاط ممتازة')
-    elif score >= 9:
+    elif percentage >= 60:
         quality_score += 2
         factors.append('نقاط جيدة')
-    elif score >= 7:
+    elif percentage >= 45:
         quality_score += 1
+    
     if position_risk['position_quality'] == 'good':
         quality_score += 2
         factors.append('مكان ممتاز')
@@ -342,12 +734,14 @@ def calculate_opportunity_quality(score, indicators, support_resistance, positio
     elif position_risk['position_quality'] == 'poor':
         quality_score += 0
         factors.append('مكان سيء')
+    
     if not late_entry['is_late']:
         quality_score += 2
         factors.append('توقيت جيد')
     else:
         quality_score += 0
         factors.append('دخول متأخر')
+    
     if momentum['score'] >= 8:
         quality_score += 2
         factors.append('زخم قوي')
@@ -355,6 +749,7 @@ def calculate_opportunity_quality(score, indicators, support_resistance, positio
         quality_score += 1
     elif momentum['score'] >= 4:
         quality_score += 0.5
+    
     latest = indicators.iloc[-1]
     adx = latest['ADX']
     if adx > 40:
@@ -365,6 +760,7 @@ def calculate_opportunity_quality(score, indicators, support_resistance, positio
         factors.append('اتجاه واضح')
     elif adx > 20:
         quality_score += 0.3
+    
     if risk_reward:
         rr = risk_reward['ratio']
         if rr >= 3.0:
@@ -384,6 +780,7 @@ def calculate_opportunity_quality(score, indicators, support_resistance, positio
             factors.append('R/R مقبول')
         elif rr >= 0.7:
             quality_score += 0.2
+    
     if quality_score >= 10:
         grade = 'A+'
     elif quality_score >= 9:
@@ -394,6 +791,7 @@ def calculate_opportunity_quality(score, indicators, support_resistance, positio
         grade = 'C'
     else:
         grade = 'D'
+    
     return {
         'score': round(quality_score, 1),
         'grade': grade,
@@ -504,11 +902,11 @@ def calculate_confirmation_signals(indicators):
         verdict = 'لا تدخل - اتجاه هابط!'
     else:
         if score >= 5:
-            verdict = 'ادخل الآن!'
+            verdict = 'إشارة قوية'
         elif score >= 3.5:
-            verdict = 'راقب - تحتاج تأكيد'
+            verdict = 'إشارة متوسطة'
         else:
-            verdict = 'لا تدخل!'
+            verdict = 'إشارة ضعيفة'
     return {
         'signals': signals,
         'positive_count': round(score, 1),
@@ -704,20 +1102,6 @@ def calculate_score(indicators, info):
         gap = abs(latest['Open'] - prev['Close']) / prev['Close']
         if gap < 0.02:
             score += 0.5
-    confirmation = calculate_confirmation_signals(indicators)
-    conf_score = confirmation['positive_count']
-    if conf_score >= 5:
-        score += 2.0
-    elif conf_score >= 4:
-        score += 1.5
-    elif conf_score >= 3:
-        score += 0.5
-    elif conf_score >= 2:
-        score += 0
-    elif conf_score >= 1.5:
-        score -= 0
-    else:
-        score -= 0
     return max(0, round(score, 1))
 
 def calculate_targets_advanced(price, confirmation_score, atr, support_resistance):
@@ -755,32 +1139,18 @@ def calculate_targets_advanced(price, confirmation_score, atr, support_resistanc
             'direction': 'هابط'
         }
 
-def validate_claude_response(response_text, data, targets, support_resistance):
-    errors = []
-    current_price = data['price']
-    price_mentions = re.findall(r'\$(\d+\.?\d*)', response_text)
-    for price_str in price_mentions:
-        price_float = float(price_str)
-        if abs(price_float - current_price) > current_price * 1.5:
-            errors.append(f"رقم مشكوك فيه: ${price_str}")
-    date_mentions = re.findall(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', response_text)
-    current_year = datetime.now().year
-    for month, year in date_mentions:
-        if int(year) < current_year:
-            errors.append(f"تاريخ ماضي: {month} {year}")
-    return errors
-
 def get_signal(score):
-    if score >= 11:
-        return "Super Strong Buy"
-    elif score >= 9:
-        return "Strong Buy"
-    elif score >= 7:
-        return "Buy"
-    elif score >= 5:
-        return "Hold"
+    percentage = (score / 14.5) * 100
+    if percentage >= 75:
+        return "إشارة قوية جداً"
+    elif percentage >= 60:
+        return "إشارة قوية"
+    elif percentage >= 45:
+        return "إشارة إيجابية"
+    elif percentage >= 30:
+        return "إشارة محايدة"
     else:
-        return "Sell"
+        return "إشارة سلبية"
 
 def is_market_open():
     now = datetime.now()
@@ -790,11 +1160,15 @@ def is_market_open():
 async def root():
     return {
         "name": "OptiMax Stock Analysis API",
-        "version": "7.2.0",
-        "description": "Ultra Edition - Comprehensive analysis",
+        "version": "8.0.0",
+        "description": "Professional Edition - تحليل احترافي من مرحلتين",
+        "features": [
+            "المرحلة 1: تقييم الإشارات الفنية البسيط",
+            "المرحلة 2: تحليل Claude AI المتقدم والشامل"
+        ],
         "endpoints": {
             "/top-opportunities": "Get top stock opportunities",
-            "/analysis/{symbol}": "Get detailed analysis for any stock"
+            "/analysis/{symbol}": "Get detailed two-stage analysis"
         }
     }
 
@@ -905,6 +1279,36 @@ async def get_detailed_analysis(symbol: str):
     volume_trend = "صاعد" if current_volume > avg_volume else "هابط"
     is_unusual_volume = bool(abs(volume_diff_pct) > 50)
     daily_trend = "صاعد" if change_pct > 0 else "هابط"
+    
+    volume_analysis = {
+        'current': current_volume,
+        'average': avg_volume,
+        'difference': volume_diff,
+        'difference_pct': round(volume_diff_pct, 2),
+        'trend': volume_trend,
+        'is_unusual': is_unusual_volume
+    }
+    
+    # المرحلة 1: تحليل الإشارات الفنية
+    technical_signals = analyze_technical_signals(indicators, volume_analysis)
+    
+    # المرحلة 2: تحليل Claude المتقدم
+    claude_deep_analysis = get_claude_deep_analysis(
+        symbol=symbol,
+        price=data['price'],
+        change_pct=change_pct,
+        technical_signals=technical_signals,
+        support_resistance=support_resistance,
+        momentum=momentum,
+        risk_reward=risk_reward,
+        opportunity_quality=opportunity_quality,
+        position_risk=position_risk,
+        late_entry=late_entry,
+        volume_analysis=volume_analysis,
+        indicators=indicators,
+        recent_performance=recent_performance
+    )
+    
     analysis_data = {
         "symbol": symbol,
         "name": data['name'],
@@ -913,6 +1317,8 @@ async def get_detailed_analysis(symbol: str):
         "change_pct": round(change_pct, 2),
         "score": score,
         "signal": get_signal(score),
+        "technical_signals": technical_signals,
+        "claude_deep_analysis": claude_deep_analysis,
         "confirmation": confirmation,
         "targets": targets,
         "support_resistance": support_resistance,
@@ -949,120 +1355,13 @@ async def get_detailed_analysis(symbol: str):
             "market_cap": market_cap,
             "sector": sector
         },
-        "volume_analysis": {
-            "current": current_volume,
-            "average": avg_volume,
-            "difference": volume_diff,
-            "difference_pct": round(volume_diff_pct, 2),
-            "trend": volume_trend,
-            "is_unusual": is_unusual_volume
-        },
+        "volume_analysis": volume_analysis,
         "market_context": {
             "daily_trend": daily_trend,
             "sector_strength": "متوسط"
         }
     }
-    try:
-        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        if confirmation['positive_count'] >= 4:
-            trading_days = 7
-        elif confirmation['positive_count'] >= 2:
-            trading_days = 5
-        else:
-            trading_days = 3
-        today = datetime.now()
-        valid_until = calculate_trading_days_ahead(today, trading_days)
-        current_date = today.strftime('%B %d, %Y')
-        current_month_year = today.strftime('%B %Y')
-        next_month = (today + timedelta(days=30)).strftime('%B %Y')
-        r1 = support_resistance.get('resistance_1', 'N/A')
-        r2 = support_resistance.get('resistance_2', 'N/A')
-        s1 = support_resistance.get('support_1', 'N/A')
-        sl = targets['stop_loss']
-        is_bearish = latest['MACD'] < 0 and latest['RSI'] < 40 and latest['ROC'] < 0
-        trend_warning = ""
-        if is_bearish:
-            trend_warning = f"""
-⚠️⚠️⚠️ BEARISH TREND:
-- MACD: {latest['MACD']:.2f} (سالب!)
-- RSI: {latest['RSI']:.2f} (ضعيف!)
-- ROC: {latest['ROC']:.2f}% (سالب!)
-لا تقل "ادخل الآن" - قل "احذر - اتجاه هابط"
-"""
-        position_warning = ""
-        if position_risk['warnings']:
-            position_warning = "\n⚠️ تحذير المكان:\n" + "\n".join(position_risk['warnings'])
-        late_entry_warning = ""
-        if late_entry['warnings']:
-            late_entry_warning = "\n⚠️ تحذير نهاية الموجة:\n" + "\n".join(late_entry['warnings'])
-        prompt = f"""⚠️⚠️⚠️ CRITICAL INSTRUCTIONS ⚠️⚠️⚠️
-
-التاريخ: {current_date}
-
-{trend_warning}
-{position_warning}
-{late_entry_warning}
-
-البيانات:
-- السعر: ${data['price']:.2f}
-- النقاط: {score}/13
-- Grade: {opportunity_quality['grade']}
-- R/R: {risk_reward['ratio'] if risk_reward else 'N/A'}
-- الزخم: {momentum['strength']} ({momentum['score']}/10)
-- التوصية النهائية: {final_recommendation['action']}
-- السبب: {final_recommendation['reason']}
-- المقاومة: ${r1}
-- الدعم: ${s1}
-- Stop Loss: ${sl:.2f}
-
-قواعد:
-1. استخدم الأرقام المذكورة فقط
-2. تواريخ مستقبلية فقط
-3. Stop Loss = ${sl:.2f}
-4. اتبع التوصية النهائية بدقة
-
-JSON فقط:
-{{
-  "confidence": {min(85, max(25, int(confirmation['positive_count'] * 15)))},
-  "success_rating": {round(confirmation['positive_count'] * 1.8, 1)},
-  "profit_probability": {min(85, max(25, int(confirmation['positive_count'] * 15)))},
-  "valid_until": "{valid_until}",
-  "trading_days": {trading_days},
-  "summary": "ملخص مع Grade و R/R",
-  "risks": ["خطر 1", "خطر 2", "خطر 3"],
-  "opportunities": ["فرصة 1", "فرصة 2", "فرصة 3"],
-  "alerts": ["تنبيه"],
-  "sector_flow": "تحليل السيولة",
-  "historical_success": "نسبة",
-  "recommendation": "توصية تتوافق مع: {final_recommendation['action']}",
-  "glossary": {{
-    "RSI": "مؤشر القوة النسبية",
-    "Grade": "تقييم الجودة (A+ إلى D)",
-    "R/R": "نسبة المخاطرة/العائد"
-  }}
-}}"""
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        response_text = message.content[0].text.strip()
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]
-        if response_text.startswith("```"):
-            response_text = response_text[3:]
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]
-        response_text = response_text.strip()
-        validation_errors = validate_claude_response(response_text, data, targets, support_resistance)
-        import json
-        claude_analysis = json.loads(response_text)
-        analysis_data["claude_analysis"] = claude_analysis
-        analysis_data["validation_warnings"] = validation_errors if validation_errors else None
-    except Exception as e:
-        print(f"Claude API error: {str(e)}")
-        analysis_data["claude_analysis"] = None
-        analysis_data["validation_warnings"] = None
+    
     cache[cache_key] = analysis_data
     return analysis_data
 
