@@ -420,7 +420,7 @@ def get_claude_deep_analysis(
         
         # بناء تفاصيل المؤشرات
         signals_detail = "\n".join([
-            f"- {s['name']}: {s['value']:.2f if isinstance(s['value'], (int, float)) else s['value']} | {s['status']} | الوزن: {s['score']:.1f}/{s['max']:.1f} | {s['interpretation']}"
+            f"- {s['name']}: {s['value']:.2f if isinstance(s['value'], (int, float)) and s['value'] != 0 else s['value']} | {s['status']} | الوزن: {s['score']:.1f}/{s['max']:.1f} | {s['interpretation']}"
             for s in technical_signals['signals']
         ])
         
@@ -433,139 +433,59 @@ def get_claude_deep_analysis(
         dist_r1 = ((r1 - price) / price * 100) if r1 else None
         dist_s1 = ((price - s1) / price * 100) if s1 else None
         
-        prompt = f"""أنت محلل مالي خبير متخصص في التحليل الفني الدقيق. مهمتك: تقديم تحليل شامل ومفصل ومنظم بدقة عالية.
+        prompt = f"""أنت محلل مالي خبير. قدم تحليلاً شاملاً ومفصلاً.
 
-═══════════════════════════════════════════════════════
-📊 بيانات السهم: {symbol}
-═══════════════════════════════════════════════════════
+السهم: {symbol}
+السعر: ${price:.2f}
+التغير: {change_pct:+.2f}%
 
-💰 السعر الحالي: ${price:.2f}
-📈 التغير اليومي: {change_pct:+.2f}%
-
-───────────────────────────────────────────────────────
-📊 المؤشرات الفنية التفصيلية:
-───────────────────────────────────────────────────────
-
+المؤشرات الفنية:
 {signals_detail}
 
-📈 النتيجة الفنية الإجمالية: {technical_signals['total_score']:.1f}/{technical_signals['total_max']:.1f} ({technical_signals['percentage']:.1f}%)
-🎯 التقييم العام: {technical_signals['overall_assessment']}
-✅ إشارات إيجابية: {technical_signals['positive_count']}
-⚪ إشارات محايدة: {technical_signals['neutral_count']}
-❌ إشارات سلبية: {technical_signals['negative_count']}
+النتيجة: {technical_signals['total_score']:.1f}/{technical_signals['total_max']:.1f} ({technical_signals['percentage']:.1f}%)
 
-───────────────────────────────────────────────────────
-📍 مستويات الدعم والمقاومة:
-───────────────────────────────────────────────────────
+الدعم/المقاومة:
+- المقاومة 1: ${r1:.2f if r1 else 'N/A'} ({dist_r1:+.1f}% أعلى)
+- الدعم 1: ${s1:.2f if s1 else 'N/A'} ({dist_s1:-.1f}% أسفل)
 
-السعر الحالي: ${price:.2f}
-المقاومة 1: ${r1:.2f if r1 else 'غير موجودة'} ({dist_r1:+.1f}% أعلى)
-المقاومة 2: ${r2:.2f if r2 else 'غير موجودة'}
-الدعم 1: ${s1:.2f if s1 else 'غير موجود'} ({dist_s1:-.1f}% أسفل)
-الدعم 2: ${s2:.2f if s2 else 'غير موجود'}
-
-تحذيرات المكان: {', '.join(position_risk['warnings']) if position_risk['warnings'] else 'لا توجد'}
-فرص المكان: {', '.join(position_risk['opportunities']) if position_risk['opportunities'] else 'لا توجد'}
-
-───────────────────────────────────────────────────────
-⚡ تحليل الزخم:
-───────────────────────────────────────────────────────
-
-نقاط الزخم: {momentum['score']}/10
-قوة الزخم: {momentum['strength']}
-
-المكونات:
-- ROC: {latest['ROC']:.2f}%
-- MACD: {latest['MACD']:.4f}
-- RSI Momentum: {'صاعد' if latest['RSI'] > 50 else 'هابط'}
-- Volume: {volume_analysis['difference_pct']:+.1f}%
-
-───────────────────────────────────────────────────────
-💰 تحليل المخاطرة والعائد:
-───────────────────────────────────────────────────────
-
-نسبة R/R: {risk_reward['ratio']:.2f if risk_reward else 'N/A'}
-العائد المحتمل: {risk_reward['potential_gain']:.1f}% if risk_reward else 'N/A'}
-الخسارة المحتملة: {risk_reward['potential_loss']:.1f}% if risk_reward else 'N/A'}
-التقييم: {risk_reward['verdict'] if risk_reward else 'N/A'}
-
-───────────────────────────────────────────────────────
-🏆 تقييم جودة الفرصة:
-───────────────────────────────────────────────────────
-
+الزخم: {momentum['score']}/10 ({momentum['strength']})
+R/R: {risk_reward['ratio']:.2f if risk_reward else 'N/A'}
 Grade: {opportunity_quality['grade']}
-النقاط: {opportunity_quality['score']:.1f}/12
-العوامل: {', '.join(opportunity_quality['factors'])}
+حجم التداول: {volume_analysis['difference_pct']:+.1f}%
 
-───────────────────────────────────────────────────────
-⚠️ تحذيرات إضافية:
-───────────────────────────────────────────────────────
+قدم تحليلاً بصيغة JSON:
 
-تحذيرات الدخول المتأخر: {', '.join(late_entry['warnings']) if late_entry['warnings'] else 'لا توجد'}
-مستوى المخاطرة: {late_entry['risk_level']}
+{{
+  "detailed_indicators": [
+    {{
+      "name": "اسم المؤشر",
+      "status": "الحالة",
+      "interpretation": "التفسير",
+      "weight": "الوزن",
+      "impact": "التأثير"
+    }}
+  ],
+  "support_resistance_analysis": "تحليل نصي للدعم والمقاومة",
+  "momentum_analysis": "تحليل نصي للزخم",
+  "risk_reward_analysis": "تحليل نصي للمخاطرة/العائد",
+  "opportunity_quality_analysis": "تحليل نصي لجودة الفرصة",
+  "volume_and_liquidity": "تحليل نصي للحجم والسيولة",
+  "final_recommendation": {{
+    "decision": "ادخل الآن أو راقب أو لا تدخل",
+    "comprehensive_analysis": "تحليل شامل 3-5 جمل",
+    "reasons": ["سبب 1", "سبب 2", "سبب 3"],
+    "alternatives": "البدائل المقترحة",
+    "conditions": "شروط الدخول إن وجدت",
+    "confidence": 75,
+    "success_probability": 65
+  }}
+}}
 
-الأداء الأخير (5 أيام):
-- الاتجاه: {recent_performance['trend']}
-- أيام إيجابية: {recent_performance['positive_days']}/5
-- متوسط التغير: {recent_performance['avg_daily_change']:.2f}%
-
-═══════════════════════════════════════════════════════
-🎯 المطلوب منك:
-═══════════════════════════════════════════════════════
-
-قدم تحليلاً شاملاً ومفصلاً بصيغة JSON تحتوي على:
-
-1. **detailed_indicators**: تحليل تفصيلي لأهم 6-8 مؤشرات فنية
-   - لكل مؤشر: الاسم، الحالة، التفسير العميق، الوزن، التأثير على القرار
-
-2. **support_resistance_analysis**: 
-   - تحليل موقع السعر بالنسبة للدعم/المقاومة
-   - المخاطر المحتملة
-   - الفرص المتاحة
-   - توصيات الدخول/الخروج
-
-3. **momentum_analysis**:
-   - تحليل مكونات الزخم
-   - قوة الاتجاه
-   - استدامة الحركة
-
-4. **risk_reward_analysis**:
-   - تقييم دقيق للمخاطرة/العائد
-   - هل يستحق الدخول؟
-   - متى الدخول الأفضل؟
-
-5. **opportunity_quality_analysis**:
-   - شرح Grade
-   - العوامل الإيجابية والسلبية
-   - التوصية
-
-6. **volume_and_liquidity**:
-   - تحليل حجم التداول
-   - السيولة
-   - قوة الحركة
-
-7. **final_recommendation**:
-   - القرار النهائي: (ادخل الآن / راقب / لا تدخل)
-   - التحليل الشامل (3-5 جمل)
-   - الأسباب الرئيسية (3-5 نقاط)
-   - البدائل المقترحة
-   - شروط الدخول (إن وجدت)
-   - درجة الثقة (0-100)
-   - احتمالية النجاح (0-100)
-
-⚠️ ملاحظات مهمة:
-- كن دقيقاً ومفصلاً
-- استخدم الأرقام الموجودة فقط
-- لا تخترع أرقاماً
-- كن موضوعياً
-- التحليل يجب أن يكون عميقاً واحترافياً
-
-أرجع JSON فقط بدون أي نص إضافي.
-"""
+قدم JSON فقط بدون نص إضافي."""
         
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=4000,
+            max_tokens=3500,
             messages=[{"role": "user", "content": prompt}]
         )
         
@@ -586,14 +506,28 @@ Grade: {opportunity_quality['grade']}
         
     except Exception as e:
         print(f"Claude API error: {str(e)}")
+        # Return default structure
         return {
-            "error": str(e),
-            "detailed_indicators": [],
+            "detailed_indicators": [
+                {
+                    "name": "خطأ في التحليل",
+                    "status": "غير متوفر",
+                    "interpretation": f"حدث خطأ: {str(e)}",
+                    "weight": "N/A",
+                    "impact": "N/A"
+                }
+            ],
+            "support_resistance_analysis": "غير متوفر حالياً",
+            "momentum_analysis": "غير متوفر حالياً",
+            "risk_reward_analysis": "غير متوفر حالياً",
+            "opportunity_quality_analysis": "غير متوفر حالياً",
+            "volume_and_liquidity": "غير متوفر حالياً",
             "final_recommendation": {
                 "decision": "خطأ في التحليل",
-                "comprehensive_analysis": "حدث خطأ أثناء معالجة التحليل",
-                "reasons": ["خطأ فني"],
-                "alternatives": "يرجى المحاولة مرة أخرى",
+                "comprehensive_analysis": "حدث خطأ أثناء معالجة تحليل Claude AI. البيانات الفنية متوفرة في المرحلة 1.",
+                "reasons": ["خطأ فني في الاتصال بـ Claude API"],
+                "alternatives": "استخدم البيانات من المرحلة 1 للتقييم",
+                "conditions": None,
                 "confidence": 0,
                 "success_probability": 0
             }
